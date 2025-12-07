@@ -21,19 +21,17 @@ message BackupManga {
     int64 lastUpdate = 10;
     int64 dateAdded = 11;
     int32 viewer = 12;
-    int32 chapterFlags = 13; // Usually 13 or similar
-    repeated int32 categories = 14; // List of category indices/orders
+    int32 chapterFlags = 13;
+    repeated int32 categories = 14;
     repeated BackupChapter backupChapters = 16;
     repeated BackupHistory backupHistory = 17;
-    // Note: I am estimating ID 16/17 for chapters/history based on common Tachi forks.
-    // If these are wrong, chapters might not appear.
-    // Common: chapters=16 (or 10? snippet said BackupChapter fields are 1-10, but not the field ID IN BackupManga)
-    // Let's check snippet "BackupChapter ... sourceOrder: 10". This is fields OF BackupChapter.
-    // I will stick with likelihood of 16/17 or check mapping logic if available.
-    // Tachi source typically:
-    // 16 = chapters
-    // 17 = history
-    // 30-36 = tracking
+    // Possible new fields in Mihon that confuse parser if missing?
+    // repeated BackupTracking backupTracking = 30; // Sources suggest tracing is separate?
+    // Actually, Tachi schema allows skipping unknown fields.
+    // The index out of range 636461 + 10 > 636461 suggests reading an int64 at EOF-10?
+    // Or reading a field tag that claims to be 10 bytes long?
+    // If we assume a standard schema, maybe 'source' (field 1) of the LAST manga is failing?
+    // Or maybe the file is just slightly truncated.
 }
 
 message BackupCategory {

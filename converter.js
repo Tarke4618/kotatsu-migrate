@@ -16,15 +16,20 @@ async function convertKotatsuToTachiyomi(file) {
         const contents = await zip.loadAsync(file);
         result.debugData.kotatsuZipFiles = Object.keys(contents.files);
 
-        // Helper to find file by fuzzy name
+        // Helper to find file by fuzzy name or exact match
         const findFile = (namePart) => {
             const filenames = Object.keys(contents.files);
+            // Try exact match first (e.g. 'favourites')
+            if (filenames.includes(namePart)) return namePart;
+            // Try with .json
+            if (filenames.includes(namePart + '.json')) return namePart + '.json';
+            // Fuzzy
             return filenames.find(n => n.toLowerCase().includes(namePart.toLowerCase()));
         };
 
         // 1. Categories
         let kotatsuCategories = [];
-        const catFile = findFile('categories.json');
+        const catFile = findFile('categories');
         if (catFile) {
             try {
                 const str = await contents.files[catFile].async('string');
@@ -32,18 +37,30 @@ async function convertKotatsuToTachiyomi(file) {
             } catch (e) { console.warn("Failed to parse categories", e); }
         }
 
+        // 3. History
+    let kotatsuHistory = [];
+    const histFile = findFile('history');
+    if (histFile) {
+        try {
+            const str = await contents.files[histFile].async('string');
+            kotatsuHistory = JSON.parse(str);
+        } catch(e) { console.warn("Failed to parse history", e); }
+    }    
+
         // 2. Favourites
-        let kotatsuFavs = [];
-        const favFile = findFile('favourites.json') || findFile('favorites.json') || findFile('manga.json');
-        if (favFile) {
-            try {
-                const str = await contents.files[favFile].async('string');
-                kotatsuFavs = JSON.parse(str);
-            } catch (e) {
-                console.warn("Failed to parse favourites", e);
-                result.debugData.parseError = e.message;
-            }
+    let kotatsuFavs = [];
+    const favFile = findFile('favourites') || findFile('favorites') || findFile('manga');
+    if (favFile) {
+        try {
+            const str = await contents.files[favFile].async('string');
+            kotatsuFavs = JSON.parse(str);
+        } catch(e) { 
+            console.warn("Failed to parse favourites", e);
+            result.debugData.parseError = e.message;
         }
+    } else {
+        console.warn("No favourites file found. Files:", Object.keys(contents.files));
+    }        
 
         result.debugData.kotatsuFavourites = kotatsuFavs;
         result.debugData.kotatsuCategories = kotatsuCategories;
