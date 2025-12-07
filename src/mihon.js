@@ -134,6 +134,33 @@ async function parseMihonBackup(file) {
     }));
 
     result.success = result.data.manga.length > 0;
+    
+    // Debug logging - count manga per category
+    console.log(`[mihon-parse] Total manga parsed: ${result.data.manga.length}`);
+    console.log(`[mihon-parse] Total categories: ${result.data.categories.length}`);
+    
+    // Count manga per category
+    const catCounts = {};
+    result.data.manga.forEach(m => {
+      const cats = m.categories || [];
+      if (cats.length === 0) {
+        catCounts['no-category'] = (catCounts['no-category'] || 0) + 1;
+      } else {
+        cats.forEach(c => {
+          catCounts[c] = (catCounts[c] || 0) + 1;
+        });
+      }
+    });
+    console.log('[mihon-parse] Manga per category:', catCounts);
+    
+    // Show sample of first and last few manga
+    if (result.data.manga.length > 0) {
+      console.log('[mihon-parse] First manga:', result.data.manga[0].title, 'categories:', result.data.manga[0].categories);
+      if (result.data.manga.length > 5) {
+        const last = result.data.manga[result.data.manga.length - 1];
+        console.log('[mihon-parse] Last manga:', last.title, 'categories:', last.categories);
+      }
+    }
 
   } catch (e) {
     result.debug.errors.push(`Parse failed: ${e.message}`);
