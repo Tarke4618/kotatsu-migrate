@@ -145,29 +145,31 @@ async function createKotatsuBackup(data) {
   const catNowSeconds = Math.floor(Date.now() / 1000);
   
   const categories = data.categories.map((c, idx) => {
-    // Use Mihon's original category ID - Kotatsu may require matching IDs
+    // Use Mihon's original category ID - Kotatsu requires matching IDs
     const mihonOrder = c.order != null ? Number(c.order) : idx;
     const mihonId = c.id != null ? Number(c.id) : idx + 1;
     
-    // Use the original Mihon ID for category_id instead of sequential numbers
+    // Use the original Mihon ID for category_id
     const kotatsuCatId = mihonId;
     
+    // Kotatsu category format - order is a sort ORDER STRING, not numeric!
+    // Valid values: "NEWEST", "OLDEST", "ALPHABETIC", "ALPHABETIC_REVERSE", "RATING", "LAST_READ", "LONG_AGO_READ", "UNREAD", "PROGRESS", "UPDATED", "RELEVANCE"
     const cat = {
       category_id: kotatsuCatId,
-      created_at: catNowSeconds,
-      sort_key: mihonOrder,
+      created_at: Date.now(),  // Milliseconds is fine
+      sort_key: mihonOrder,    // This is the DISPLAY order of categories
       title: c.name || `Category ${idx + 1}`,
-      order: mihonOrder,  // Number, not string
+      order: "NEWEST",         // Sort order for manga WITHIN category
       track: true,
       show_in_lib: true,
-      deleted_at: 0,
+      // NOTE: No deleted_at field in real Kotatsu format
     };
     
-    // Map BOTH order and id to kotatsu category_id (which is now mihonId)
+    // Map BOTH order and id to kotatsu category_id
     categoryByOrder[mihonOrder] = kotatsuCatId;
     categoryById[mihonId] = kotatsuCatId;
     
-    console.log(`[kotatsu] Category: "${c.name}" - order=${mihonOrder}, mihonId=${mihonId} -> Kotatsu ID ${kotatsuCatId}`);
+    console.log(`[kotatsu] Category: "${c.name}" - sort_key=${mihonOrder}, id=${mihonId} -> Kotatsu ID ${kotatsuCatId}`);
     return cat;
   });
   
@@ -175,13 +177,12 @@ async function createKotatsuBackup(data) {
   if (categories.length === 0) {
     categories.push({
       category_id: 1,
-      created_at: catNowSeconds,
+      created_at: Date.now(),
       sort_key: 0,
       title: 'Default',
-      order: 0,  // Number, not string
+      order: "NEWEST",
       track: true,
       show_in_lib: true,
-      deleted_at: 0,
     });
     categoryByOrder[0] = 1;
     categoryById[0] = 1;
