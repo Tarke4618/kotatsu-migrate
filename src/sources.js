@@ -22,6 +22,12 @@ const SOURCE_MAP = {
   "bato": "1309193200845035910",
   "bato.to": "1309193200845035910",
   
+  // User's sources
+  "weebcentral": "3579975874765752406",
+  "comix": "0", // Local/unknown - maps to local source
+  "zinmanga": "3827655599836498744",
+  "local": "0", // Local source
+  
   // ===== SCANLATOR SITES =====
   "asurascans": "2553637714107023673",
   "asura scans": "2553637714107023673",
