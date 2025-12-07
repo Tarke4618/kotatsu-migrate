@@ -11,13 +11,14 @@ async function convertKotatsuToTachiyomi(file) {
     let kotatsuCats = [];
     let kotatsuChapters = {}; // Map mangaId -> chapters list if separate
 
-    // 1. Categories
-    let kotatsuCategories = [];
     if (contents.files['categories.json']) {
         try {
             const str = await contents.files['categories.json'].async('string');
             kotatsuCategories = JSON.parse(str);
         } catch(e) { console.warn("Failed to parse categories", e); }
+    } else {
+        // Try generic search?
+        // User debug data will show actual file names.
     }
     
     // 2. Favourites
@@ -138,7 +139,9 @@ async function convertKotatsuToTachiyomi(file) {
         debugData: {
             kotatsuFavourites: kotatsuFavs,
             kotatsuCategories: kotatsuCategories,
-            mappedTachiManga: tachiMangaList
+            mappedTachiManga: tachiMangaList,
+            // Debug: List all files in zip
+            kotatsuZipFiles: Object.keys(contents.files) 
         }
     };
 }
@@ -154,12 +157,18 @@ async function convertTachiyomiToKotatsu(file) {
     const uint8Array = new Uint8Array(arrayBuffer);
     
     let protoData;
+    // Check GZip Magic Bytes (1F 8B)
+    const isGzip = uint8Array.length > 2 && uint8Array[0] === 0x1f && uint8Array[1] === 0x8b;
+    
     try {
-        // Try ungzip first (standard .tachibk is gzipped)
-        protoData = pako.ungzip(uint8Array);
+        if (isGzip) {
+            protoData = pako.ungzip(uint8Array);
+        } else {
+            console.warn("File does not have GZip magic bytes. Trying raw.");
+            protoData = uint8Array;
+        }
     } catch (e) {
-        console.warn("Not gzipped? Trying raw.", e);
-        protoData = uint8Array;
+        throw new Error("Failed to decompress file. Is it a valid backup? " + e.message);
     }
 
     // 2. Decode Proto
@@ -232,12 +241,15 @@ async function convertTachiyomiToKotatsu(file) {
     return {
         blob: blob,
         debugData: {
+            isGzip: isGzip,
+            protoSize: protoData.length,
             tachiBackup: backup,
-            mappedKotatsuFavourites: favourites,
-            mappedKotatsuCategories: categories
+            // Debug: show first few items
+            mappedDebug: favourites.slice(0, 3) 
         }
     };
 }
+
 
 // Helpers
 function generateId(url, title) {
