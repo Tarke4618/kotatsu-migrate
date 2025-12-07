@@ -1,11 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
     const dropKotatsu = document.getElementById('drop-kotatsu');
-    const dropTachiyomi = document.getElementById('drop-tachiyomi');
     const fileKotatsu = document.getElementById('file-kotatsu');
-    const fileTachiyomi = document.getElementById('file-tachiyomi');
     const statusKotatsu = document.getElementById('status-kotatsu');
-    const statusTachiyomi = document.getElementById('status-tachiyomi');
 
     // Helper: Handle Drag & Drop
     function setupDragDrop(dropZone, fileInput, callback) {
@@ -62,25 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Process Tachiyomi File
-    setupDragDrop(dropTachiyomi, fileTachiyomi, async (file) => {
-        if (!file.name.endsWith('.tachibk') && !file.name.endsWith('.proto.gz')) {
-           alert("Warning: This does not look like a Tachiyomi backup (.tachibk). Converting a Kotatsu file here will fail!");
-        }
-        setStatus(statusTachiyomi, 'Processing Tachiyomi backup...', 'info');
-        try {
-            const result = await convertTachiyomiToKotatsu(file);
-            if (result.success) {
-                setStatus(statusTachiyomi, 'Conversion successful!', 'success');
-                createDownloadLink(statusTachiyomi, result.blob, 'kotatsu_backup.zip');
-            } else {
-                setStatus(statusTachiyomi, 'Conversion failed: ' + (result.debugData.error || "Unknown error"), 'error');
-            }
-            createDebugLink(statusTachiyomi, result.debugData);
-        } catch (err) {
-            console.error(err);
-            setStatus(statusTachiyomi, 'Critical Error: ' + err.message, 'error');
-        }
-    });
+
 
     function setStatus(element, text, type) {
         element.innerHTML = `<span class="${type}-msg">${text}</span>`;

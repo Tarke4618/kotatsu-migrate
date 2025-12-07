@@ -1,6 +1,7 @@
 // converter.js
 
 // Kotatsu parsing logic
+// Kotatsu parsing logic
 async function convertKotatsuToTachiyomi(file) {
     const result = {
         success: false,
@@ -14,62 +15,75 @@ async function convertKotatsuToTachiyomi(file) {
     try {
         const zip = new JSZip();
         const contents = await zip.loadAsync(file);
-        result.debugData.kotatsuZipFiles = Object.keys(contents.files);
-
-        // Helper to find file by fuzzy name or exact match
-        const findFile = (namePart) => {
-            const filenames = Object.keys(contents.files);
-            // Try exact match first (e.g. 'favourites')
-            if (filenames.includes(namePart)) return namePart;
-            // Try with .json
-            if (filenames.includes(namePart + '.json')) return namePart + '.json';
-            // Fuzzy
-            return filenames.find(n => n.toLowerCase().includes(namePart.toLowerCase()));
+        
+        // 1. Deep Scan for JSONs
+        let filesFound = {
+            favourites: null, // content string
+            categories: null, // content string
+            history: null     // content string
         };
+        
+        // Helper to store file paths we found for debug
+        result.debugData.foundPaths = {};
 
-        // 1. Categories
+        // We need to iterate all files to find them recursively
+        const zipEntries = Object.keys(contents.files);
+        result.debugData.kotatsuZipFiles = zipEntries;
+
+        for (const path of zipEntries) {
+            const entry = contents.files[path];
+            if (entry.dir) continue;
+
+            const name = path.split('/').pop().toLowerCase();
+            
+            // Logic: prefer exact matches, but allow fuzzy if needed
+            // Categories
+            if (name === 'categories.json' || name === 'categories') {
+                filesFound.categories = await entry.async('string');
+                result.debugData.foundPaths.categories = path;
+            }
+            
+            // Favourites (sometimes called manga.json in old backups)
+            if (name === 'favourites.json' || name === 'favourites' || name === 'manga.json') {
+                 // If we already found one, maybe prefer 'favourites.json'? 
+                 // For now, first found is fine, or specific priority:
+                 if (!filesFound.favourites || name === 'favourites.json') {
+                     filesFound.favourites = await entry.async('string');
+                     result.debugData.foundPaths.favourites = path;
+                 }
+            }
+
+            // History
+            if (name === 'history.json' || name === 'history') {
+                filesFound.history = await entry.async('string');
+                result.debugData.foundPaths.history = path;
+            }
+        }
+
+        if (!filesFound.favourites) {
+             throw new Error("Could not find 'favourites.json' (or 'favourites'/'manga.json') in the zip. Is this a valid Kotatsu backup?");
+        }
+
+        // 2. Parse JSONs
+        let kotatsuFavs = [];
+        try {
+            kotatsuFavs = JSON.parse(filesFound.favourites);
+        } catch (e) { throw new Error(`Failed to parse favourites JSON: ${e.message}`); }
+
         let kotatsuCategories = [];
-        const catFile = findFile('categories');
-        if (catFile) {
-            try {
-                const str = await contents.files[catFile].async('string');
-                kotatsuCategories = JSON.parse(str);
-            } catch (e) { console.warn("Failed to parse categories", e); }
+        if (filesFound.categories) {
+            try { kotatsuCategories = JSON.parse(filesFound.categories); } 
+            catch (e) { console.warn("Bad categories JSON", e); }
         }
 
-        // 3. History
-    let kotatsuHistory = [];
-    const histFile = findFile('history');
-    if (histFile) {
-        try {
-            const str = await contents.files[histFile].async('string');
-            kotatsuHistory = JSON.parse(str);
-        } catch(e) { console.warn("Failed to parse history", e); }
-    }    
-
-        // 2. Favourites
-    let kotatsuFavs = [];
-    const favFile = findFile('favourites') || findFile('favorites') || findFile('manga');
-    if (favFile) {
-        try {
-            const str = await contents.files[favFile].async('string');
-            kotatsuFavs = JSON.parse(str);
-        } catch(e) { 
-            console.warn("Failed to parse favourites", e);
-            result.debugData.parseError = e.message;
-        }
-    } else {
-        console.warn("No favourites file found. Files:", Object.keys(contents.files));
-    }        
-
+        // 3. Map to Tachiyomi
         result.debugData.kotatsuFavourites = kotatsuFavs;
         result.debugData.kotatsuCategories = kotatsuCategories;
 
-        if (kotatsuFavs.length === 0) {
-            throw new Error("No favourites found in zip. Files: " + result.debugData.kotatsuZipFiles.join(', '));
+        if (!Array.isArray(kotatsuFavs)) {
+             throw new Error("Favourites data is not an array. Found: " + typeof kotatsuFavs);
         }
 
-        // ... MAPPING LOGIC ...
         const tachiCategories = kotatsuCategories.map((c, idx) => ({
             name: c.name || c,
             order: idx,
@@ -84,11 +98,13 @@ async function convertKotatsuToTachiyomi(file) {
                 artist: kManga.artist || "",
                 author: kManga.author || "",
                 description: kManga.description || "",
-                genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre : kManga.genre.split(',').map(s=>s.trim())) : [],
+                genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre : String(kManga.genre).split(',').map(s=>s.trim())) : [],
                 status: mapStatus(kManga.status),
                 thumbnailUrl: kManga.coverUrl || kManga.thumbnailUrl || "",
                 dateAdded: kManga.dateAdded || Date.now(),
-                categories: [], // Simplified for stability
+                categories: [], // TODO: Map category IDs if possible
+                // Add default history or chapters if needed?
+                // For now, we just map basic info.
             };
         });
         
@@ -96,7 +112,7 @@ async function convertKotatsuToTachiyomi(file) {
 
         // Proto encoding
         if (typeof protobuf === 'undefined' || typeof TACHIYOMI_PROTO_STRING === 'undefined') {
-            throw new Error("Dependencies missing");
+            throw new Error("Dependencies missing (protobuf or schema)");
         }
         const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
         const BackupMessage = root.lookupType("Backup");
@@ -104,6 +120,11 @@ async function convertKotatsuToTachiyomi(file) {
             backupManga: tachiMangaList,
             backupCategories: tachiCategories,
         };
+        
+        // Verify payload
+        const errMsg = BackupMessage.verify(payload);
+        if (errMsg) throw Error("Proto verification failed: " + errMsg);
+
         const message = BackupMessage.create(payload);
         const buffer = BackupMessage.encode(message).finish();
         const gzipped = pako.gzip(buffer);
@@ -124,84 +145,8 @@ async function convertTachiyomiToKotatsu(file) {
     const result = {
         success: false,
         blob: null,
-        debugData: { isGzip: false }
+        debugData: { isGzip: false }// Tachiyomi parsing logic removed as per "God Mode" pivot.
     };
-
-    if (typeof protobuf === 'undefined' || typeof TACHIYOMI_PROTO_STRING === 'undefined') {
-        result.debugData.error = "Dependencies missing";
-        return result;
-    }
-
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        const isGzip = uint8Array.length > 2 && uint8Array[0] === 0x1f && uint8Array[1] === 0x8b;
-        result.debugData.isGzip = isGzip;
-
-        let protoData = uint8Array;
-        if (isGzip) {
-            try {
-                protoData = pako.ungzip(uint8Array);
-            } catch(e) {
-                console.warn("Gzip failed, trying raw", e);
-            }
-        }
-        
-        result.debugData.protoSize = protoData.length;
-        result.debugData.protoHexStart = Array.from(protoData.slice(0, 50)).map(b => b.toString(16).padStart(2,'0')).join(' ');
-
-        const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
-        const BackupMessage = root.lookupType("Backup");
-        
-        // Decode
-        const message = BackupMessage.decode(protoData);
-        // If we get here, decode worked
-        const backup = BackupMessage.toObject(message, {
-            longs: String, 
-            enums: String,
-            bytes: String,
-            defaults: true,
-            arrays: true
-        });
-
-        result.debugData.tachiBackupKeys = Object.keys(backup);
-
-        // Map
-        const categories = (backup.backupCategories || []).map(c => ({
-            name: c.name,
-            order: c.order
-        }));
-
-        const favourites = (backup.backupManga || []).map(m => {
-             return {
-                id: generateId(m.url, m.title),
-                title: m.title,
-                author: m.author,
-                artist: m.artist,
-                description: m.description,
-                url: m.url,
-                coverUrl: m.thumbnailUrl,
-                source: mapTachiyomiIdToSource(m.source),
-                status: mapTachiStatus(m.status),
-                genre: (m.genre || []).join(', '),
-                dateAdded: Number(m.dateAdded),
-                categories: mapTachiCategories(m.categories, categories)
-            };
-        });
-
-        result.debugData.mappedDebug = favourites.slice(0, 3);
-
-        const zip = new JSZip();
-        zip.file("categories.json", JSON.stringify(categories, null, 2));
-        zip.file("favourites.json", JSON.stringify(favourites, null, 2));
-        
-        result.blob = await zip.generateAsync({type: "blob"});
-        result.success = true;
-
-    } catch(e) {
-        result.debugData.error = e.message;
-        result.debugData.stack = e.stack;
-    }
     
     return result;
 }
