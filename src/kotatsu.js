@@ -164,19 +164,13 @@ async function createKotatsuBackup(data) {
   const sourcesSet = new Set();
 
   // Convert Mihon manga to Kotatsu favourites format
-  // ONLY include manga that are actually favorited (not just history)
+  // All manga in Mihon backup are library entries (favorites)
   // Kotatsu stores one favourite entry per manga-category pair
   // If manga is in multiple categories, create multiple favourite entries
   const favourites = [];
   let sortKeyCounter = 0;
   
   data.manga.forEach((m, mangaIdx) => {
-    // Skip manga that aren't favorited - they'll only be in history
-    if (m.favorite === false) {
-      console.log(`[kotatsu] Skipping non-favorite manga: "${m.title}"`);
-      return;
-    }
-    
     const sourceName = window.findKotatsuSourceName 
       ? window.findKotatsuSourceName(m.source) 
       : 'UNKNOWN';
