@@ -1,5 +1,6 @@
 // src/schema.js - Complete Mihon Protobuf Schema (from official source)
 // https://github.com/mihonapp/mihon/tree/main/app/src/main/java/eu/kanade/tachiyomi/data/backup/models
+// Note: Simplified preference handling due to Kotlin sealed class serialization complexity
 
 const MIHON_PROTO_SCHEMA = `
 syntax = "proto2";
@@ -8,8 +9,9 @@ message Backup {
   repeated BackupManga backupManga = 1;
   repeated BackupCategory backupCategories = 2;
   repeated BackupSource backupSources = 101;
-  repeated BackupPreference backupPreferences = 104;
-  repeated BackupSourcePreferences backupSourcePreferences = 105;
+  // Skip preferences - they use Kotlin sealed class serialization which is complex
+  // repeated BackupPreference backupPreferences = 104;
+  // repeated BackupSourcePreferences backupSourcePreferences = 105;
   repeated BackupExtensionRepos backupExtensionRepo = 106;
 }
 
@@ -87,48 +89,6 @@ message BackupTracking {
   optional int64 startedReadingDate = 10;
   optional int64 finishedReadingDate = 11;
   optional int64 mediaId = 100;
-}
-
-message BackupPreference {
-  optional string key = 1;
-  // PreferenceValue is polymorphic - use oneof to handle all types
-  oneof value {
-    IntPreferenceValue intValue = 2;
-    LongPreferenceValue longValue = 3;
-    FloatPreferenceValue floatValue = 4;
-    StringPreferenceValue stringValue = 5;
-    BooleanPreferenceValue boolValue = 6;
-    StringSetPreferenceValue stringSetValue = 7;
-  }
-}
-
-message IntPreferenceValue {
-  optional int32 value = 1;
-}
-
-message LongPreferenceValue {
-  optional int64 value = 1;
-}
-
-message FloatPreferenceValue {
-  optional float value = 1;
-}
-
-message StringPreferenceValue {
-  optional string value = 1;
-}
-
-message BooleanPreferenceValue {
-  optional bool value = 1;
-}
-
-message StringSetPreferenceValue {
-  repeated string value = 1;
-}
-
-message BackupSourcePreferences {
-  optional string sourceKey = 1;
-  repeated BackupPreference prefs = 2;
 }
 
 message BackupExtensionRepos {
