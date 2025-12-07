@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Kotatsu → Mihon Converter</title>
   
   <!-- Fonts -->
@@ -23,7 +23,13 @@
   <!-- Three.js Canvas -->
   <canvas id="three-canvas"></canvas>
 
-  <main class="container">
+  <!-- Toggle Button -->
+  <button class="toggle-ui-btn" id="toggle-ui" title="Toggle UI">
+    <span class="toggle-icon">🎮</span>
+  </button>
+
+  <!-- Main UI Container -->
+  <main class="container" id="main-ui">
     <!-- Header -->
     <header class="header">
       <h1 class="logo">
@@ -40,7 +46,7 @@
         <div class="drop-zone-border"></div>
         <div class="drop-zone-inner">
           <div class="drop-zone-icon">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
@@ -79,7 +85,7 @@
       <!-- Actions -->
       <div class="actions" id="actions" style="display: none;">
         <button class="btn btn-primary" id="btn-download">
-          <span>⬇</span> DOWNLOAD MIHON BACKUP
+          <span>⬇</span> DOWNLOAD
         </button>
         <button class="btn btn-secondary" id="btn-debug">
           <span>🔍</span> DEBUG

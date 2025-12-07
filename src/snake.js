@@ -66,6 +66,9 @@
   function animate() {
     ctx.clearRect(0, 0, snakeCanvas.width, snakeCanvas.height);
 
+    // Set global alpha for 60% opacity
+    ctx.globalAlpha = 0.6;
+
     // Head follows mouse with easing
     const head = segments[0];
     const dx = mouseX - head.x;
@@ -110,14 +113,10 @@
       ctx.arc(segment.x, segment.y, width, 0, Math.PI * 2);
       ctx.fillStyle = `rgb(${brightness}, ${green}, 0)`;
       ctx.fill();
-      
-      // Glow effect
-      ctx.shadowBlur = 20 - progress * 15;
-      ctx.shadowColor = '#FFD700';
     }
     
-    // Draw scales pattern
-    ctx.shadowBlur = 0;
+    // Draw scales pattern (full opacity for visibility)
+    ctx.globalAlpha = 0.4;
     for (let i = 2; i < segmentCount - 3; i += 3) {
       const segment = segments[i];
       const progress = i / segmentCount;
@@ -130,7 +129,8 @@
       ctx.stroke();
     }
 
-    // Draw head details
+    // Draw head details at full opacity
+    ctx.globalAlpha = 0.8;
     const headSegment = segments[0];
     const nextSegment = segments[1];
     const headAngle = Math.atan2(
@@ -148,6 +148,7 @@
     const rightEyeY = headSegment.y + Math.sin(headAngle - 0.5) * eyeOffset;
 
     // Eye whites
+    ctx.globalAlpha = 1;
     ctx.beginPath();
     ctx.arc(leftEyeX, leftEyeY, eyeSize, 0, Math.PI * 2);
     ctx.arc(rightEyeX, rightEyeY, eyeSize, 0, Math.PI * 2);
@@ -190,6 +191,7 @@
     }
 
     // Glow around head
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
     ctx.arc(headSegment.x, headSegment.y, 35, 0, Math.PI * 2);
     const headGlow = ctx.createRadialGradient(
@@ -200,6 +202,9 @@
     headGlow.addColorStop(1, 'rgba(255, 215, 0, 0)');
     ctx.fillStyle = headGlow;
     ctx.fill();
+
+    // Reset alpha
+    ctx.globalAlpha = 1;
 
     requestAnimationFrame(animate);
   }

@@ -1,4 +1,5 @@
 // src/three-bg.js - Three.js Particle Background with Mouse Interaction
+// Only ash-colored particles, no geometric shapes
 
 (function() {
   const canvas = document.getElementById('three-canvas');
@@ -19,17 +20,16 @@
   let targetMouseX = 0;
   let targetMouseY = 0;
 
-  // Particle system - Light ash color
-  const particleCount = 800;
+  // Particle system - Light ash color only
+  const particleCount = 600;
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(particleCount * 3);
   const originalPositions = new Float32Array(particleCount * 3);
-  const velocities = new Float32Array(particleCount * 3);
 
   for (let i = 0; i < particleCount; i++) {
-    const x = (Math.random() - 0.5) * 60;
-    const y = (Math.random() - 0.5) * 60;
-    const z = (Math.random() - 0.5) * 30 - 10;
+    const x = (Math.random() - 0.5) * 80;
+    const y = (Math.random() - 0.5) * 80;
+    const z = (Math.random() - 0.5) * 40 - 15;
     
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
@@ -38,20 +38,16 @@
     originalPositions[i * 3] = x;
     originalPositions[i * 3 + 1] = y;
     originalPositions[i * 3 + 2] = z;
-    
-    velocities[i * 3] = 0;
-    velocities[i * 3 + 1] = 0;
-    velocities[i * 3 + 2] = 0;
   }
 
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
   // Light ash color material
   const material = new THREE.PointsMaterial({
-    size: 0.08,
-    color: 0xC0C0C0, // Light ash/silver color
+    size: 0.1,
+    color: 0xAAAAAA, // Light ash/gray color
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.5,
     sizeAttenuation: true,
     blending: THREE.AdditiveBlending,
   });
@@ -59,18 +55,18 @@
   const particles = new THREE.Points(geometry, material);
   scene.add(particles);
 
-  camera.position.z = 25;
+  camera.position.z = 30;
 
   // Mouse tracking
   document.addEventListener('mousemove', (e) => {
-    targetMouseX = (e.clientX / window.innerWidth - 0.5) * 30;
-    targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 30;
+    targetMouseX = (e.clientX / window.innerWidth - 0.5) * 40;
+    targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 40;
   });
 
   document.addEventListener('touchmove', (e) => {
     if (e.touches.length > 0) {
-      targetMouseX = (e.touches[0].clientX / window.innerWidth - 0.5) * 30;
-      targetMouseY = -(e.touches[0].clientY / window.innerHeight - 0.5) * 30;
+      targetMouseX = (e.touches[0].clientX / window.innerWidth - 0.5) * 40;
+      targetMouseY = -(e.touches[0].clientY / window.innerHeight - 0.5) * 40;
     }
   });
 
@@ -84,7 +80,7 @@
 
     // Update particle positions based on mouse
     const positions = geometry.attributes.position.array;
-    const time = Date.now() * 0.0005;
+    const time = Date.now() * 0.0003;
     
     for (let i = 0; i < particleCount; i++) {
       const i3 = i * 3;
@@ -100,26 +96,27 @@
       const dist = Math.sqrt(dx * dx + dy * dy);
       
       // Particles are pushed away by mouse, with falloff
-      const influence = Math.max(0, 1 - dist / 15) * 3;
+      const influence = Math.max(0, 1 - dist / 20) * 4;
       
       // Add some floating motion
-      const floatX = Math.sin(time + i * 0.1) * 0.5;
-      const floatY = Math.cos(time + i * 0.15) * 0.5;
+      const floatX = Math.sin(time + i * 0.1) * 0.3;
+      const floatY = Math.cos(time + i * 0.15) * 0.3;
       
       // Apply displacement
-      positions[i3] = ox + (dx / dist) * influence + floatX;
-      positions[i3 + 1] = oy + (dy / dist) * influence + floatY;
-      positions[i3 + 2] = oz + Math.sin(time + i * 0.05) * 0.3;
-      
-      // Handle NaN from division by zero
-      if (isNaN(positions[i3])) positions[i3] = ox;
-      if (isNaN(positions[i3 + 1])) positions[i3 + 1] = oy;
+      if (dist > 0.1) {
+        positions[i3] = ox + (dx / dist) * influence + floatX;
+        positions[i3 + 1] = oy + (dy / dist) * influence + floatY;
+      } else {
+        positions[i3] = ox + floatX;
+        positions[i3 + 1] = oy + floatY;
+      }
+      positions[i3 + 2] = oz + Math.sin(time + i * 0.05) * 0.2;
     }
     
     geometry.attributes.position.needsUpdate = true;
 
     // Slow particle system rotation
-    particles.rotation.z += 0.0002;
+    particles.rotation.z += 0.0001;
 
     renderer.render(scene, camera);
   }

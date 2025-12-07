@@ -21,10 +21,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const debugContent = document.getElementById('debug-content');
   const btnCloseModal = document.getElementById('btn-close-modal');
 
+  // Toggle UI elements
+  const toggleBtn = document.getElementById('toggle-ui');
+  const mainUI = document.getElementById('main-ui');
+
   // ===== State =====
   let parsedData = null;
   let convertedBlob = null;
   let debugData = {};
+  let uiVisible = true;
+
+  // ===== Toggle UI Handler =====
+  toggleBtn.addEventListener('click', () => {
+    uiVisible = !uiVisible;
+    mainUI.classList.toggle('hidden', !uiVisible);
+    toggleBtn.classList.toggle('active', !uiVisible);
+  });
+
 
   // ===== Status Updates =====
   function setStatus(icon, text, type = 'default') {
