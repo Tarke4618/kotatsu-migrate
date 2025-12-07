@@ -84,25 +84,26 @@ async function convertKotatsuToTachiyomi(file) {
              throw new Error("Favourites data is not an array. Found: " + typeof kotatsuFavs);
         }
 
+        // ... MAPPING LOGIC ...
         const tachiCategories = kotatsuCategories.map((c, idx) => ({
-            name: c.name || c,
-            order: idx,
+            name: String(c.name || c || "Category " + (idx + 1)), // STRICT STRING
+            order: Number(idx),
             flags: 0
         }));
 
         const tachiMangaList = kotatsuFavs.map(kManga => {
             return {
-                source: mapSourceToTachiyomiId(kManga.source),
-                url: kManga.url || "",
-                title: kManga.title || "Unknown",
-                artist: kManga.artist || "",
-                author: kManga.author || "",
-                description: kManga.description || "",
-                genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre : String(kManga.genre).split(',').map(s=>s.trim())) : [],
-                status: mapStatus(kManga.status),
-                thumbnailUrl: kManga.coverUrl || kManga.thumbnailUrl || "",
-                dateAdded: kManga.dateAdded || Date.now(),
-                categories: [], // TODO: Map category IDs if possible
+                source: String(mapSourceToTachiyomiId(kManga.source)), // STRICT STRING for int64 in JS if using string mode
+                url: String(kManga.url || ""), 
+                title: String(kManga.title || "Unknown Title"),
+                artist: String(kManga.artist || ""),
+                author: String(kManga.author || ""),
+                description: String(kManga.description || ""),
+                genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre.map(String) : String(kManga.genre).split(',').map(s=>s.trim())) : [],
+                status: Number(mapStatus(kManga.status)),
+                thumbnailUrl: String(kManga.coverUrl || kManga.thumbnailUrl || ""),
+                dateAdded: Number(kManga.dateAdded || Date.now()),
+                categories: [], // TODO: Map category indices if needed, strictly int32
                 // Add default history or chapters if needed?
                 // For now, we just map basic info.
             };
