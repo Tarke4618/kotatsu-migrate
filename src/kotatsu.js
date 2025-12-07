@@ -116,13 +116,16 @@ async function createKotatsuBackup(data) {
 
   // Generate consistent manga ID using hash (matches Kotatsu's approach)
   // Uses a 64-bit-like hash similar to Kotlin's hashCode
+  // Returns a Number for JSON compatibility
   function generateMangaId(url, source) {
     const str = `${source}:${url}`;
     let h = 0n;
     for (let i = 0; i < str.length; i++) {
       h = BigInt.asIntN(64, 31n * h + BigInt(str.charCodeAt(i)));
     }
-    return h.toString();
+    // Convert BigInt to Number - may lose precision for very large values
+    // but Kotatsu expects numeric IDs in JSON
+    return Number(h);
   }
 
   // Generate tag ID from title and source
@@ -132,7 +135,7 @@ async function createKotatsuBackup(data) {
     for (let i = 0; i < str.length; i++) {
       h = BigInt.asIntN(64, 31n * h + BigInt(str.charCodeAt(i)));
     }
-    return h.toString();
+    return Number(h);
   }
 
   // Build category lookup: Mihon category reference -> Kotatsu category_id
@@ -253,8 +256,7 @@ async function createKotatsuBackup(data) {
         category_id: defaultCatId,
         sort_key: sortKeyCounter++,
         pinned: false,
-        created_at: m.dateAdded || Date.now(),
-        deleted_at: 0,
+        created_at: Number(m.dateAdded) || Date.now(),
         manga: mangaObj,
       });
     } else {
@@ -276,8 +278,7 @@ async function createKotatsuBackup(data) {
             category_id: kotatsuCatId,
             sort_key: sortKeyCounter++,
             pinned: false,
-            created_at: m.dateAdded || Date.now(),
-            deleted_at: 0,
+            created_at: Number(m.dateAdded) || Date.now(),
             manga: mangaObj,
           });
           if (mangaIdx < 5) {
@@ -292,8 +293,7 @@ async function createKotatsuBackup(data) {
             category_id: defaultCatId,
             sort_key: sortKeyCounter++,
             pinned: false,
-            created_at: m.dateAdded || Date.now(),
-            deleted_at: 0,
+            created_at: Number(m.dateAdded) || Date.now(),
             manga: mangaObj,
           });
         }
