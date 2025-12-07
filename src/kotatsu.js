@@ -142,9 +142,12 @@ async function createKotatsuBackup(data) {
   const categoryById = {};     // id -> kotatsu category_id
   
   const categories = data.categories.map((c, idx) => {
-    const kotatsuCatId = idx + 1; // Kotatsu uses 1-based category IDs
-    const mihonOrder = c.order != null ? c.order : idx;
-    const mihonId = c.id != null ? c.id : idx;
+    // Use Mihon's original category ID - Kotatsu may require matching IDs
+    const mihonOrder = c.order != null ? Number(c.order) : idx;
+    const mihonId = c.id != null ? Number(c.id) : idx + 1;
+    
+    // Use the original Mihon ID for category_id instead of sequential numbers
+    const kotatsuCatId = mihonId;
     
     const cat = {
       category_id: kotatsuCatId,
@@ -157,11 +160,11 @@ async function createKotatsuBackup(data) {
       deleted_at: 0,
     };
     
-    // Map BOTH order and id to kotatsu category_id
+    // Map BOTH order and id to kotatsu category_id (which is now mihonId)
     categoryByOrder[mihonOrder] = kotatsuCatId;
     categoryById[mihonId] = kotatsuCatId;
     
-    console.log(`[kotatsu] Category: "${c.name}" - order=${mihonOrder}, id=${mihonId} -> Kotatsu ID ${kotatsuCatId}`);
+    console.log(`[kotatsu] Category: "${c.name}" - order=${mihonOrder}, mihonId=${mihonId} -> Kotatsu ID ${kotatsuCatId}`);
     return cat;
   });
   
