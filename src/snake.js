@@ -1,4 +1,4 @@
-// src/snake.js - Interactive Snake that follows mouse/touch with bending body
+// src/snake.js - Interactive Snake that follows mouse/touch with improved physics
 
 (function() {
   // Create canvas for snake
@@ -25,7 +25,7 @@
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
-  // Snake segments
+  // Snake segments with velocity for physics
   const segmentCount = 50;
   const segments = [];
   const segmentLength = 12;
@@ -35,12 +35,16 @@
     segments.push({
       x: window.innerWidth / 2,
       y: window.innerHeight / 2,
+      vx: 0,
+      vy: 0,
     });
   }
 
   // Mouse position
   let mouseX = window.innerWidth / 2;
   let mouseY = window.innerHeight / 2;
+  let targetX = mouseX;
+  let targetY = mouseY;
 
   // Track mouse
   document.addEventListener('mousemove', (e) => {
@@ -62,75 +66,129 @@
     }
   });
 
-  // Animation
+  // Physics constants
+  const OFFSET = 3; // 3px behind cursor
+  const SPRING = 0.15;
+  const DAMPING = 0.85;
+  const TENSION = 0.4;
+
+  // Animation with improved physics
   function animate() {
     ctx.clearRect(0, 0, snakeCanvas.width, snakeCanvas.height);
 
-    // Set global alpha for 60% opacity
-    ctx.globalAlpha = 0.6;
-
-    // Head follows mouse with easing
+    // Calculate target position (3px behind cursor based on movement direction)
     const head = segments[0];
     const dx = mouseX - head.x;
     const dy = mouseY - head.y;
-    head.x += dx * 0.15;
-    head.y += dy * 0.15;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist > 0.1) {
+      // Target is 3px behind cursor in the direction of movement
+      targetX = mouseX - (dx / dist) * OFFSET;
+      targetY = mouseY - (dy / dist) * OFFSET;
+    }
 
-    // Each segment follows the one before it
+    // Spring physics for head
+    const ax = (targetX - head.x) * SPRING;
+    const ay = (targetY - head.y) * SPRING;
+    head.vx = (head.vx + ax) * DAMPING;
+    head.vy = (head.vy + ay) * DAMPING;
+    head.x += head.vx;
+    head.y += head.vy;
+
+    // Each segment follows with spring physics
     for (let i = 1; i < segmentCount; i++) {
       const prev = segments[i - 1];
       const curr = segments[i];
       
       const segDx = prev.x - curr.x;
       const segDy = prev.y - curr.y;
-      const dist = Math.sqrt(segDx * segDx + segDy * segDy);
+      const segDist = Math.sqrt(segDx * segDx + segDy * segDy);
       
-      if (dist > segmentLength) {
+      if (segDist > segmentLength) {
         const angle = Math.atan2(segDy, segDx);
-        curr.x = prev.x - Math.cos(angle) * segmentLength;
-        curr.y = prev.y - Math.sin(angle) * segmentLength;
+        const targetSegX = prev.x - Math.cos(angle) * segmentLength;
+        const targetSegY = prev.y - Math.sin(angle) * segmentLength;
+        
+        // Spring physics for each segment
+        const segAx = (targetSegX - curr.x) * TENSION;
+        const segAy = (targetSegY - curr.y) * TENSION;
+        curr.vx = (curr.vx + segAx) * DAMPING;
+        curr.vy = (curr.vy + segAy) * DAMPING;
+        curr.x += curr.vx;
+        curr.y += curr.vy;
       }
     }
 
-    // Draw snake body
+    // Set global alpha for transparency
+    ctx.globalAlpha = 0.6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
-    // Main body gradient - yellow to orange
+    // Draw smooth body using bezier curves
+    if (segmentCount > 2) {
+      ctx.beginPath();
+      ctx.moveTo(segments[0].x, segments[0].y);
+      
+      for (let i = 1; i < segmentCount - 1; i++) {
+        const curr = segments[i];
+        const next = segments[i + 1];
+        const cpx = (curr.x + next.x) / 2;
+        const cpy = (curr.y + next.y) / 2;
+        ctx.quadraticCurveTo(curr.x, curr.y, cpx, cpy);
+      }
+      
+      // Draw with gradient stroke
+      const bodyGrad = ctx.createLinearGradient(
+        segments[0].x, segments[0].y,
+        segments[segmentCount - 1].x, segments[segmentCount - 1].y
+      );
+      bodyGrad.addColorStop(0, 'rgba(255, 215, 0, 0.9)');
+      bodyGrad.addColorStop(0.5, 'rgba(255, 180, 0, 0.7)');
+      bodyGrad.addColorStop(1, 'rgba(200, 130, 0, 0.3)');
+      ctx.strokeStyle = bodyGrad;
+      ctx.lineWidth = 40;
+      ctx.stroke();
+      
+      // Inner highlight
+      ctx.strokeStyle = 'rgba(255, 240, 150, 0.3)';
+      ctx.lineWidth = 20;
+      ctx.stroke();
+    }
+
+    // Draw body circles for texture
     for (let i = segmentCount - 1; i >= 0; i--) {
       const segment = segments[i];
       const progress = i / segmentCount;
       
-      // Body width tapers from head to tail
-      const baseWidth = 25;
+      const baseWidth = 22;
       const width = baseWidth * (1 - progress * 0.7);
       
-      // Color gradient: bright yellow at head, darker at tail
       const brightness = 255 - progress * 80;
       const green = Math.floor(200 - progress * 100);
       
       ctx.beginPath();
       ctx.arc(segment.x, segment.y, width, 0, Math.PI * 2);
-      ctx.fillStyle = `rgb(${brightness}, ${green}, 0)`;
+      ctx.fillStyle = `rgba(${brightness}, ${green}, 0, 0.5)`;
       ctx.fill();
     }
     
-    // Draw scales pattern
-    ctx.globalAlpha = 0.4;
+    // Scale pattern
+    ctx.globalAlpha = 0.3;
     for (let i = 2; i < segmentCount - 3; i += 3) {
       const segment = segments[i];
       const progress = i / segmentCount;
-      const width = 25 * (1 - progress * 0.7);
+      const width = 22 * (1 - progress * 0.7);
       
       ctx.beginPath();
-      ctx.arc(segment.x, segment.y, width * 0.6, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255, 165, 0, ${0.5 - progress * 0.3})`;
-      ctx.lineWidth = 2;
+      ctx.arc(segment.x, segment.y, width * 0.5, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 165, 0, ${0.4 - progress * 0.2})`;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
-    // Draw head details
-    ctx.globalAlpha = 0.8;
+    // Head details
+    ctx.globalAlpha = 0.9;
     const headSegment = segments[0];
     const nextSegment = segments[1];
     const headAngle = Math.atan2(
@@ -139,15 +197,14 @@
     );
 
     // Eyes
-    const eyeOffset = 8;
-    const eyeSize = 6;
+    const eyeOffset = 7;
+    const eyeSize = 5;
     
     const leftEyeX = headSegment.x + Math.cos(headAngle + 0.5) * eyeOffset;
     const leftEyeY = headSegment.y + Math.sin(headAngle + 0.5) * eyeOffset;
     const rightEyeX = headSegment.x + Math.cos(headAngle - 0.5) * eyeOffset;
     const rightEyeY = headSegment.y + Math.sin(headAngle - 0.5) * eyeOffset;
 
-    // Eye whites
     ctx.globalAlpha = 1;
     ctx.beginPath();
     ctx.arc(leftEyeX, leftEyeY, eyeSize, 0, Math.PI * 2);
@@ -155,11 +212,10 @@
     ctx.fillStyle = '#FFFFFF';
     ctx.fill();
 
-    // Pupils
     const pupilOffset = 2;
     ctx.beginPath();
-    ctx.arc(leftEyeX + Math.cos(headAngle) * pupilOffset, leftEyeY + Math.sin(headAngle) * pupilOffset, 3, 0, Math.PI * 2);
-    ctx.arc(rightEyeX + Math.cos(headAngle) * pupilOffset, rightEyeY + Math.sin(headAngle) * pupilOffset, 3, 0, Math.PI * 2);
+    ctx.arc(leftEyeX + Math.cos(headAngle) * pupilOffset, leftEyeY + Math.sin(headAngle) * pupilOffset, 2.5, 0, Math.PI * 2);
+    ctx.arc(rightEyeX + Math.cos(headAngle) * pupilOffset, rightEyeY + Math.sin(headAngle) * pupilOffset, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = '#000000';
     ctx.fill();
 
@@ -168,9 +224,9 @@
     const tongueFlick = Math.sin(tongueTime) > 0.7;
     
     if (tongueFlick) {
-      const tongueLength = 30;
-      const tongueStartX = headSegment.x + Math.cos(headAngle) * 20;
-      const tongueStartY = headSegment.y + Math.sin(headAngle) * 20;
+      const tongueLength = 25;
+      const tongueStartX = headSegment.x + Math.cos(headAngle) * 18;
+      const tongueStartY = headSegment.y + Math.sin(headAngle) * 18;
       
       ctx.beginPath();
       ctx.moveTo(tongueStartX, tongueStartY);
@@ -178,34 +234,31 @@
       const tongueEndX = tongueStartX + Math.cos(headAngle) * tongueLength;
       const tongueEndY = tongueStartY + Math.sin(headAngle) * tongueLength;
       
-      // Forked tongue
       ctx.lineTo(tongueEndX, tongueEndY);
       ctx.moveTo(tongueEndX, tongueEndY);
-      ctx.lineTo(tongueEndX + Math.cos(headAngle + 0.3) * 10, tongueEndY + Math.sin(headAngle + 0.3) * 10);
+      ctx.lineTo(tongueEndX + Math.cos(headAngle + 0.3) * 8, tongueEndY + Math.sin(headAngle + 0.3) * 8);
       ctx.moveTo(tongueEndX, tongueEndY);
-      ctx.lineTo(tongueEndX + Math.cos(headAngle - 0.3) * 10, tongueEndY + Math.sin(headAngle - 0.3) * 10);
+      ctx.lineTo(tongueEndX + Math.cos(headAngle - 0.3) * 8, tongueEndY + Math.sin(headAngle - 0.3) * 8);
       
       ctx.strokeStyle = '#FF0000';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
 
-    // Glow around head
-    ctx.globalAlpha = 0.5;
+    // Subtle glow
+    ctx.globalAlpha = 0.4;
     ctx.beginPath();
-    ctx.arc(headSegment.x, headSegment.y, 35, 0, Math.PI * 2);
+    ctx.arc(headSegment.x, headSegment.y, 30, 0, Math.PI * 2);
     const headGlow = ctx.createRadialGradient(
       headSegment.x, headSegment.y, 0,
-      headSegment.x, headSegment.y, 50
+      headSegment.x, headSegment.y, 40
     );
     headGlow.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
     headGlow.addColorStop(1, 'rgba(255, 215, 0, 0)');
     ctx.fillStyle = headGlow;
     ctx.fill();
 
-    // Reset alpha
     ctx.globalAlpha = 1;
-
     requestAnimationFrame(animate);
   }
 
