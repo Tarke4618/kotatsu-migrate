@@ -165,6 +165,23 @@ async function createKotatsuBackup(data) {
     return cat;
   });
   
+  // Ensure at least one category exists (Kotatsu requires categories)
+  if (categories.length === 0) {
+    categories.push({
+      category_id: 1,
+      created_at: Date.now(),
+      sort_key: 0,
+      title: 'Default',
+      order: '0',
+      track: true,
+      show_in_lib: true,
+      deleted_at: 0,
+    });
+    categoryByOrder[0] = 1;
+    categoryById[0] = 1;
+    console.log('[kotatsu] Created default category since none provided');
+  }
+  
   console.log('[kotatsu] categoryByOrder lookup:', categoryByOrder);
   console.log('[kotatsu] categoryById lookup:', categoryById);
 
@@ -236,10 +253,14 @@ async function createKotatsuBackup(data) {
     } else {
       // Create one favourite entry per category
       mihonCatRefs.forEach(catRef => {
-        // Try ORDER lookup first (Mihon uses order), then ID lookup as fallback
-        let kotatsuCatId = categoryByOrder[catRef];
+        // Convert to number (protobuf returns int64 as strings)
+        const catRefNum = Number(catRef);
+        const catRefStr = String(catRef);
+        
+        // Try both number and string key lookups
+        let kotatsuCatId = categoryByOrder[catRefNum] || categoryByOrder[catRefStr];
         if (kotatsuCatId == null) {
-          kotatsuCatId = categoryById[catRef];
+          kotatsuCatId = categoryById[catRefNum] || categoryById[catRefStr];
         }
         
         if (kotatsuCatId != null) {
