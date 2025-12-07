@@ -119,10 +119,10 @@ async function convertKotatsuToTachiyomi(file) {
                 // Some versions might have array?
             }
 
-            return {
-                source: String(mapSourceToTachiyomiId(kManga.source)), 
+                source: String(window.findSourceId ? window.findSourceId(kManga.source) : "0"), // Smart Source Mapping
                 url: String(kManga.url || ""), 
                 title: String(kManga.title || "Unknown Title"),
+// ... rest of mapping
                 artist: String(kManga.artist || ""),
                 author: String(kManga.author || ""),
                 description: String(kManga.description || ""),
@@ -239,20 +239,7 @@ function mapTachiCategories(catIds, allCats) {
     }).filter(n => n);
 }
 
-function mapSourceToTachiyomiId(sourceName) {
-    if (!sourceName) return 0;
-    const s = sourceName.toLowerCase();
-    
-    // Common Sources (IDs from standard Tachi Extensions)
-    // MangaDex: 6400630869375065225 -> need to represent as string for protobuf.js or Long
-    // Use String "6400630869375065225"
-    if (s.includes("mangadex")) return "6400630869375065225";
-    if (s.includes("manganato")) return "7369325983802951508"; // Example, might be wrong
-    if (s.includes("bato")) return "7146431200542137600";
-    
-    // Fallback: Local Source
-    return "0";
-}
+// Old mapping helpers removed. Used sources.js instead.
 
 function mapStatus(kStatus) {
     if (!kStatus) return 0;
