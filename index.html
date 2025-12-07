@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manga Migrate - Kotatsu ↔ Mihon Converter</title>
+  <title>Kotatsu to Mihon Converter</title>
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,48 +27,24 @@
   <main class="container">
     <!-- Header -->
     <header class="header">
-      <h1 class="logo">MANGA<span>MIGRATE</span></h1>
-      <p class="tagline">Seamless backup conversion between Kotatsu & Mihon</p>
+      <h1 class="logo">KOTATSU<span>→MIHON</span></h1>
+      <p class="tagline">Convert your Kotatsu backup to Mihon format</p>
     </header>
 
     <!-- Converter Panel -->
-    <section class="converter">
+    <section class="converter converter-single">
       <!-- Drop Zone: Kotatsu -->
-      <div class="drop-zone" id="zone-kotatsu" data-format="kotatsu">
+      <div class="drop-zone drop-zone-large" id="zone-kotatsu" data-format="kotatsu">
         <div class="drop-zone-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </div>
-        <h3 class="drop-zone-title">Kotatsu</h3>
-        <p class="drop-zone-text">Drop <code>.bk.zip</code> file</p>
+        <h3 class="drop-zone-title">Drop Kotatsu Backup Here</h3>
+        <p class="drop-zone-text">Select or drop your <code>.bk.zip</code> file</p>
         <input type="file" id="input-kotatsu" accept=".zip,.bk,.bk.zip" hidden>
-      </div>
-
-      <!-- Direction Indicator -->
-      <div class="direction-indicator" id="direction">
-        <button class="direction-btn" id="btn-kotatsu-to-mihon" title="Kotatsu → Mihon">
-          <span class="arrow">→</span>
-        </button>
-        <button class="direction-btn" id="btn-mihon-to-kotatsu" title="Mihon → Kotatsu">
-          <span class="arrow">←</span>
-        </button>
-      </div>
-
-      <!-- Drop Zone: Mihon -->
-      <div class="drop-zone" id="zone-mihon" data-format="mihon">
-        <div class="drop-zone-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </div>
-        <h3 class="drop-zone-title">Mihon</h3>
-        <p class="drop-zone-text">Drop <code>.tachibk</code> file</p>
-        <input type="file" id="input-mihon" accept=".tachibk,.proto.gz" hidden>
       </div>
     </section>
 
@@ -78,60 +54,51 @@
         <span class="status-icon" id="status-icon">⏳</span>
         <span class="status-text" id="status-text">Ready to convert</span>
       </div>
-      <div class="stats" id="stats" style="display: none;">
-        <div class="stat">
+      
+      <!-- Stats Grid -->
+      <div class="stats-grid" id="stats" style="display: none;">
+        <div class="stat-item">
           <span class="stat-value" id="stat-manga">0</span>
           <span class="stat-label">Manga</span>
         </div>
-        <div class="stat">
+        <div class="stat-item">
           <span class="stat-value" id="stat-categories">0</span>
           <span class="stat-label">Categories</span>
         </div>
-        <div class="stat">
+        <div class="stat-item">
           <span class="stat-value" id="stat-history">0</span>
           <span class="stat-label">History</span>
         </div>
       </div>
-    </section>
 
-    <!-- Action Buttons -->
-    <section class="actions" id="actions" style="display: none;">
-      <button class="btn btn-primary" id="btn-download">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Download Backup
-      </button>
-      <button class="btn btn-secondary" id="btn-debug">View Debug Data</button>
+      <!-- Actions -->
+      <div class="actions" id="actions" style="display: none;">
+        <button class="btn btn-primary" id="btn-download">
+          <span>📥</span> Download Mihon Backup
+        </button>
+        <button class="btn btn-secondary" id="btn-debug">
+          <span>🔍</span> Debug Info
+        </button>
+      </div>
     </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-      <p>Built for manga readers • <a href="https://github.com" target="_blank">Source</a></p>
-    </footer>
   </main>
 
   <!-- Debug Modal -->
   <div class="modal" id="modal-debug">
-    <div class="modal-backdrop"></div>
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Debug Data</h3>
+        <h2>Debug Information</h2>
         <button class="modal-close" id="btn-close-modal">&times;</button>
       </div>
-      <div class="modal-body">
-        <pre id="debug-content"></pre>
-      </div>
+      <pre class="debug-output" id="debug-content"></pre>
     </div>
   </div>
 
-  <!-- Scripts (v=22 for cache busting) -->
-  <script src="src/schema.js?v=22"></script>
-  <script src="src/sources.js?v=22"></script>
-  <script src="src/kotatsu.js?v=22"></script>
-  <script src="src/mihon.js?v=22"></script>
-  <script src="app.js?v=22"></script>
+  <!-- Scripts -->
+  <script src="src/schema.js"></script>
+  <script src="src/sources.js"></script>
+  <script src="src/kotatsu.js"></script>
+  <script src="src/mihon.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

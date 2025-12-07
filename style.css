@@ -132,6 +132,13 @@ body {
   margin-bottom: 32px;
 }
 
+.converter-single {
+  grid-template-columns: 1fr;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* ===== Drop Zones ===== */
 .drop-zone {
   background: var(--bg-card);
@@ -147,6 +154,10 @@ body {
 .drop-zone:hover {
   border-color: var(--border-hover);
   transform: translateY(-2px);
+}
+
+.drop-zone-large {
+  padding: 64px 32px;
 }
 
 .drop-zone.active {
@@ -251,7 +262,8 @@ body {
   font-weight: 500;
 }
 
-.stats {
+.stats,
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
@@ -260,7 +272,8 @@ body {
   border-top: 1px solid var(--border-color);
 }
 
-.stat {
+.stat,
+.stat-item {
   text-align: center;
 }
 

@@ -1,15 +1,10 @@
 // app.js - Main Application Logic
-// Wires UI components to conversion engine
+// Kotatsu to Mihon Converter
 
 document.addEventListener('DOMContentLoaded', () => {
   // ===== DOM Elements =====
   const zoneKotatsu = document.getElementById('zone-kotatsu');
-  const zoneMihon = document.getElementById('zone-mihon');
   const inputKotatsu = document.getElementById('input-kotatsu');
-  const inputMihon = document.getElementById('input-mihon');
-  
-  const btnKotatsuToMihon = document.getElementById('btn-kotatsu-to-mihon');
-  const btnMihonToKotatsu = document.getElementById('btn-mihon-to-kotatsu');
   
   const statusIcon = document.getElementById('status-icon');
   const statusText = document.getElementById('status-text');
@@ -27,27 +22,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCloseModal = document.getElementById('btn-close-modal');
 
   // ===== State =====
-  let currentDirection = 'kotatsu-to-mihon'; // or 'mihon-to-kotatsu'
   let parsedData = null;
   let convertedBlob = null;
   let debugData = {};
-
-  // ===== Direction Toggle =====
-  function setDirection(dir) {
-    currentDirection = dir;
-    btnKotatsuToMihon.classList.toggle('active', dir === 'kotatsu-to-mihon');
-    btnMihonToKotatsu.classList.toggle('active', dir === 'mihon-to-kotatsu');
-    
-    // Update zone highlights
-    zoneKotatsu.classList.toggle('active', dir === 'kotatsu-to-mihon');
-    zoneMihon.classList.toggle('active', dir === 'mihon-to-kotatsu');
-  }
-
-  btnKotatsuToMihon.addEventListener('click', () => setDirection('kotatsu-to-mihon'));
-  btnMihonToKotatsu.addEventListener('click', () => setDirection('mihon-to-kotatsu'));
-
-  // Initialize
-  setDirection('kotatsu-to-mihon');
 
   // ===== Status Updates =====
   function setStatus(icon, text, type = 'default') {
@@ -79,8 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     actionsPanel.style.display = 'none';
   }
 
-  // ===== Drop Zone Handlers =====
-  function setupDropZone(zone, input, format) {
+  // ===== Drop Zone Handler =====
+  function setupDropZone(zone, input) {
     // Click to browse
     zone.addEventListener('click', () => input.click());
 
@@ -101,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const file = e.dataTransfer.files[0];
       if (file) {
-        await handleFile(file, format);
+        await handleFile(file);
       }
     });
 
@@ -109,37 +86,23 @@ document.addEventListener('DOMContentLoaded', () => {
     input.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (file) {
-        await handleFile(file, format);
+        await handleFile(file);
       }
     });
   }
 
-  setupDropZone(zoneKotatsu, inputKotatsu, 'kotatsu');
-  setupDropZone(zoneMihon, inputMihon, 'mihon');
+  setupDropZone(zoneKotatsu, inputKotatsu);
 
   // ===== File Processing =====
-  async function handleFile(file, format) {
-    setStatus('⏳', `Parsing ${format} backup...`);
+  async function handleFile(file) {
+    setStatus('⏳', 'Parsing Kotatsu backup...');
     hideStats();
     hideActions();
     debugData = {};
 
     try {
-      // Validate format matches expected
-      if (format === 'kotatsu' && currentDirection !== 'kotatsu-to-mihon') {
-        setDirection('kotatsu-to-mihon');
-      } else if (format === 'mihon' && currentDirection !== 'mihon-to-kotatsu') {
-        setDirection('mihon-to-kotatsu');
-      }
-
-      // Parse based on format
-      let parseResult;
-      if (format === 'kotatsu') {
-        parseResult = await window.parseKotatsuBackup(file);
-      } else {
-        parseResult = await window.parseMihonBackup(file);
-      }
-
+      // Parse Kotatsu backup
+      const parseResult = await window.parseKotatsuBackup(file);
       debugData.parseResult = parseResult;
 
       if (!parseResult.success) {
@@ -151,24 +114,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // Count stats
       const mangaCount = parsedData.manga?.length || 0;
       const categoryCount = parsedData.categories?.length || 0;
-      const historyCount = format === 'kotatsu' ? 
-        (parsedData.history?.length || 0) :
-        parsedData.manga?.reduce((sum, m) => sum + (m.history?.length || 0), 0) || 0;
+      const historyCount = parsedData.history?.length || 0;
 
       setStatus('✅', `Parsed ${mangaCount} manga`, 'success');
       showStats(mangaCount, categoryCount, historyCount);
 
-      // Convert
-      setStatus('⏳', 'Converting...');
-      
-      if (format === 'kotatsu') {
-        // Kotatsu → Mihon
-        convertedBlob = await window.createMihonBackup(parsedData);
-      } else {
-        // Mihon → Kotatsu
-        convertedBlob = await window.createKotatsuBackup(parsedData);
-      }
-
+      // Convert to Mihon
+      setStatus('⏳', 'Converting to Mihon format...');
+      convertedBlob = await window.createMihonBackup(parsedData);
       debugData.convertedSize = convertedBlob.size;
 
       setStatus('✅', 'Conversion complete! Ready to download.', 'success');
@@ -186,10 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   btnDownload.addEventListener('click', () => {
     if (!convertedBlob) return;
 
-    const filename = currentDirection === 'kotatsu-to-mihon' 
-      ? `kotatsu_to_mihon_${Date.now()}.tachibk`
-      : `mihon_to_kotatsu_${Date.now()}.bk.zip`;
-
+    const filename = `kotatsu_to_mihon_${Date.now()}.tachibk`;
     const url = URL.createObjectURL(convertedBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -198,28 +148,21 @@ document.addEventListener('DOMContentLoaded', () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    setStatus('📥', 'Downloaded! Import in your app.', 'success');
   });
 
   // ===== Debug Modal =====
   btnDebug.addEventListener('click', () => {
     debugContent.textContent = JSON.stringify(debugData, null, 2);
-    modalDebug.classList.add('open');
+    modalDebug.style.display = 'flex';
   });
 
   btnCloseModal.addEventListener('click', () => {
-    modalDebug.classList.remove('open');
+    modalDebug.style.display = 'none';
   });
 
-  document.querySelector('.modal-backdrop')?.addEventListener('click', () => {
-    modalDebug.classList.remove('open');
-  });
-
-  // Escape key closes modal
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      modalDebug.classList.remove('open');
+  modalDebug.addEventListener('click', (e) => {
+    if (e.target === modalDebug) {
+      modalDebug.style.display = 'none';
     }
   });
 });
