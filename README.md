@@ -34,12 +34,38 @@ A web-based tool for converting manga library backups between Kotatsu (`.bk.zip`
 
 ## Supported Sources
 
-The tool includes mappings for 100+ manga sources including:
+The tool includes mappings for **200+ unique manga sources** including:
 
-- MangaDex, MangaPlus, Webtoons
+### Major Aggregators
+
+- MangaDex, MangaPlus, Webtoons, Batoto
+- MangaNato, MangaKakalot, MangaPark, MangaSee
+- Comick.fun, MangaFire, MangaPill
+
+### Scanlator Groups
+
 - Asura Scans, Reaper Scans, Flame Scans
-- MangaNato, MangaKakalot, Batoto
-- Comick.fun, Weebcentral, and many more
+- Luminous Scans, Void Scans, Reset Scans
+
+### Regional Sites
+
+- **Chinese**: CopyManga, DMZJ, MangaBZ
+- **Korean**: NewToki, TopToon, RawKuma
+- **Japanese**: SenManga, RawLH, Weloma
+- **Spanish**: TuMangaOnline, LeerManga, InManga
+- **Portuguese**: MangaLivre, MangaHosted, UnionMangas
+- **French**: JapScan, ScanVF, SushiScan
+- **Russian**: ReManga, MangaLib, Desu.me
+- **Indonesian**: Komiku, KomikCast, Kiryuu
+- **Vietnamese**: BlogTruyen, NetTruyen, TruyenQQ
+- **Turkish**: MangaDenizi, TempestScans
+- **Arabic**: GManga, TeamX, MangaAE
+- **Thai**: NekoPost, Manga168
+
+### Adult Sites
+
+- NHentai, E-Hentai, HentaiFox, HentaiHand
+- 3Hentai, AsmHentai, Hitomi, Pururin
 
 Unknown sources are mapped to "Local Source" (ID: 0).
 
