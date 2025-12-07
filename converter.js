@@ -6,34 +6,42 @@ async function convertKotatsuToTachiyomi(file) {
     const contents = await zip.loadAsync(file);
     
     // Data holders
-    let kotatsuFavs = [];
-    let kotatsuHistory = [];
-    let kotatsuCats = [];
     let kotatsuChapters = {}; // Map mangaId -> chapters list if separate
 
-    if (contents.files['categories.json']) {
+    // Helper to find file by fuzzy name
+    const findFile = (namePart) => {
+        const filenames = Object.keys(contents.files);
+        return filenames.find(n => n.toLowerCase().includes(namePart.toLowerCase()));
+    };
+
+    // 1. Categories
+    let kotatsuCategories = [];
+    const catFile = findFile('categories.json');
+    if (catFile) {
         try {
-            const str = await contents.files['categories.json'].async('string');
+            const str = await contents.files[catFile].async('string');
             kotatsuCategories = JSON.parse(str);
         } catch(e) { console.warn("Failed to parse categories", e); }
-    } else {
-        // Try generic search?
-        // User debug data will show actual file names.
     }
     
     // 2. Favourites
-    // Could be 'favourites.json' or 'manga.json'
-    if (contents.files['favourites.json']) {
+    let kotatsuFavs = [];
+    const favFile = findFile('favourites.json') || findFile('favorites.json') || findFile('manga.json');
+    if (favFile) {
         try {
-            const str = await contents.files['favourites.json'].async('string');
+            const str = await contents.files[favFile].async('string');
             kotatsuFavs = JSON.parse(str);
         } catch(e) { console.warn("Failed to parse favourites", e); }
+    } else {
+        console.warn("No favourites file found. Files:", Object.keys(contents.files));
     }
 
     // 3. History
-    if (contents.files['history.json']) {
+    let kotatsuHistory = [];
+    const histFile = findFile('history.json');
+    if (histFile) {
         try {
-            const str = await contents.files['history.json'].async('string');
+            const str = await contents.files[histFile].async('string');
             kotatsuHistory = JSON.parse(str);
         } catch(e) { console.warn("Failed to parse history", e); }
     }
@@ -175,27 +183,33 @@ async function convertTachiyomiToKotatsu(file) {
     const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
     const BackupMessage = root.lookupType("Backup");
     
-    const message = BackupMessage.decode(protoData);
-    const backup = BackupMessage.toObject(message, {
-        longs: String, // Convert Longs to Strings
-        enums: String,
-        bytes: String,
-        defaults: true,
-        arrays: true
-    });
+    let backup = {};
+    let decodeError = null;
+
+    try {
+        const message = BackupMessage.decode(protoData);
+        backup = BackupMessage.toObject(message, {
+            longs: String, 
+            enums: String,
+            bytes: String,
+            defaults: true,
+            arrays: true
+        });
+    } catch (err) {
+        console.error("Proto decode error:", err);
+        decodeError = err.message;
+        // Proceed with empty backup to allow showing debug data
+    }
 
     // 3. Map to Kotatsu
-    // Categories
     const categories = (backup.backupCategories || []).map(c => ({
         name: c.name,
         order: c.order
     }));
 
-    // Manga
-    // Kotatsu `favourites.json`
     const favourites = (backup.backupManga || []).map(m => {
         return {
-            id: generateId(m.url, m.title), // Kotatsu needs an ID? Usually generic hash.
+            id: generateId(m.url, m.title),
             title: m.title,
             author: m.author,
             artist: m.artist,
@@ -210,41 +224,25 @@ async function convertTachiyomiToKotatsu(file) {
         };
     });
 
-    // History
-    // Kotatsu `history.json`
-    let history = [];
-    (backup.backupManga || []).forEach(m => {
-        if (m.backupHistory && m.backupHistory.length > 0) {
-            m.backupHistory.forEach(h => {
-                history.push({
-                    mangaId: generateId(m.url, m.title),
-                    mangaTitle: m.title,
-                    chapterId: 0, // Unknown
-                    // Kotatsu history format is tricky without seeing it.
-                    // Assuming simplified:
-                    date: Number(h.lastRead),
-                    // ...
-                });
-            });
-        }
-    });
-
-    // 4. Zip
-    const zip = new JSZip();
-    zip.file("categories.json", JSON.stringify(categories, null, 2));
-    zip.file("favourites.json", JSON.stringify(favourites, null, 2));
-    if (history.length > 0) {
-        zip.file("history.json", JSON.stringify(history, null, 2));
+    // Zip generation only if we have data
+    let blob = null;
+    if (!decodeError) {
+        const zip = new JSZip();
+        zip.file("categories.json", JSON.stringify(categories, null, 2));
+        zip.file("favourites.json", JSON.stringify(favourites, null, 2));
+        // ... history ...
+        blob = await zip.generateAsync({type: "blob"});
     }
 
-    const blob = await zip.generateAsync({type: "blob"});
     return {
-        blob: blob,
+        blob: blob, // Might be null if error
         debugData: {
+            error: decodeError,
             isGzip: isGzip,
             protoSize: protoData.length,
-            tachiBackup: backup,
-            // Debug: show first few items
+            // Hex dump of start
+            protoHexStart: Array.from(protoData.slice(0, 20)).map(b => b.toString(16).padStart(2,'0')).join(' '),
+            tachiBackupKeys: Object.keys(backup),
             mappedDebug: favourites.slice(0, 3) 
         }
     };
