@@ -135,11 +135,16 @@ async function createKotatsuBackup(data) {
     return h.toString();
   }
 
-  // Build category lookup (order/index -> category object)
+  // Build category lookup: Mihon category ID -> Kotatsu category_id
+  // Mihon stores categories with their own IDs, manga references these IDs
   const categoryLookup = {};
   const categories = data.categories.map((c, idx) => {
+    // Use Mihon's category ID if available, otherwise generate one
+    const mihonId = c.id != null ? c.id : idx;
+    const kotatsuCatId = idx + 1; // Kotatsu uses 1-based category IDs
+    
     const cat = {
-      category_id: c.id || idx + 1,
+      category_id: kotatsuCatId,
       created_at: Date.now(),
       sort_key: c.order || idx,
       title: c.name || `Category ${idx + 1}`,
@@ -148,7 +153,10 @@ async function createKotatsuBackup(data) {
       show_in_lib: true,
       deleted_at: 0,
     };
-    categoryLookup[idx] = cat.category_id; // Mihon uses index as category reference
+    
+    // Map Mihon's category ID to Kotatsu's category_id
+    categoryLookup[mihonId] = kotatsuCatId;
+    console.log(`[kotatsu] Category mapping: Mihon ID ${mihonId} -> Kotatsu ID ${kotatsuCatId} (${c.name})`);
     return cat;
   });
 
@@ -156,8 +164,12 @@ async function createKotatsuBackup(data) {
   const sourcesSet = new Set();
 
   // Convert Mihon manga to Kotatsu favourites format
-  // Kotatsu expects: { manga_id, category_id, sort_key, pinned, created_at, manga: {...} }
-  const favourites = data.manga.map((m, idx) => {
+  // Kotatsu stores one favourite entry per manga-category pair
+  // If manga is in multiple categories, create multiple favourite entries
+  const favourites = [];
+  let sortKeyCounter = 0;
+  
+  data.manga.forEach((m, mangaIdx) => {
     const sourceName = window.findKotatsuSourceName 
       ? window.findKotatsuSourceName(m.source) 
       : 'UNKNOWN';
@@ -165,12 +177,6 @@ async function createKotatsuBackup(data) {
     
     const mangaId = generateMangaId(m.url || '', sourceName);
     
-    // Get category_id from Mihon's category index
-    const mihonCatIdx = m.categories?.[0];
-    const categoryId = (mihonCatIdx != null && categoryLookup[mihonCatIdx]) 
-      ? categoryLookup[mihonCatIdx] 
-      : (categories[0]?.category_id || 1);
-
     // Build tags from genre array with proper id and pinned fields
     const tags = (m.genre || []).map(g => ({
       id: generateTagId(String(g), sourceName),
@@ -180,30 +186,76 @@ async function createKotatsuBackup(data) {
       pinned: false,
     }));
 
-    return {
-      manga_id: mangaId,
-      category_id: categoryId,
-      sort_key: idx,
-      pinned: false,
-      created_at: m.dateAdded || Date.now(),
-      deleted_at: 0,
-      manga: {
-        id: mangaId,
-        title: m.title || 'Unknown',
-        alt_title: '',
-        url: m.url || '',
-        public_url: m.url || '',
-        rating: -1.0,
-        nsfw: false,
-        content_rating: 'SAFE',
-        cover_url: m.thumbnailUrl || '',
-        large_cover_url: null,
-        state: mapMihonStatusToKotatsu(m.status),
-        author: m.author || '',
-        source: sourceName,
-        tags: tags,
-      },
+    // Build manga object (shared across all category entries)
+    const mangaObj = {
+      id: mangaId,
+      title: m.title || 'Unknown',
+      alt_title: '',
+      url: m.url || '',
+      public_url: m.url || '',
+      rating: -1.0,
+      nsfw: false,
+      content_rating: 'SAFE',
+      cover_url: m.thumbnailUrl || '',
+      large_cover_url: null,
+      state: mapMihonStatusToKotatsu(m.status),
+      author: m.author || '',
+      source: sourceName,
+      tags: tags,
     };
+
+    // Get category IDs from Mihon manga
+    const mihonCatIds = m.categories || [];
+    
+    if (mihonCatIds.length === 0) {
+      // No category - use first available or default to 1
+      const defaultCatId = categories.length > 0 ? categories[0].category_id : 1;
+      favourites.push({
+        manga_id: mangaId,
+        category_id: defaultCatId,
+        sort_key: sortKeyCounter++,
+        pinned: false,
+        created_at: m.dateAdded || Date.now(),
+        deleted_at: 0,
+        manga: mangaObj,
+      });
+    } else {
+      // Create one favourite entry per category
+      mihonCatIds.forEach(mihonCatId => {
+        // Look up Kotatsu category_id using Mihon's category ID
+        const kotatsuCatId = categoryLookup[mihonCatId];
+        
+        if (kotatsuCatId != null) {
+          favourites.push({
+            manga_id: mangaId,
+            category_id: kotatsuCatId,
+            sort_key: sortKeyCounter++,
+            pinned: false,
+            created_at: m.dateAdded || Date.now(),
+            deleted_at: 0,
+            manga: mangaObj,
+          });
+        } else {
+          // Mihon category ID not found in our lookup - use default
+          console.warn(`[kotatsu] Unknown Mihon category ID: ${mihonCatId} for manga "${m.title}"`);
+          const defaultCatId = categories.length > 0 ? categories[0].category_id : 1;
+          favourites.push({
+            manga_id: mangaId,
+            category_id: defaultCatId,
+            sort_key: sortKeyCounter++,
+            pinned: false,
+            created_at: m.dateAdded || Date.now(),
+            deleted_at: 0,
+            manga: mangaObj,
+          });
+        }
+      });
+    }
+    
+    // Debug first few manga
+    if (mangaIdx < 3) {
+      console.log(`[kotatsu] Manga "${m.title}": Mihon categories=${JSON.stringify(mihonCatIds)}`);
+    }
   });
 
   // Convert history
