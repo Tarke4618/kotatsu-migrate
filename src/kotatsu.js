@@ -312,12 +312,12 @@ async function createKotatsuBackup(data) {
     }
   });
 
-  // Build sources list
-  const sources = Array.from(sourcesSet).map(name => ({
-    source: name,
-    enabled: true,
-    sort_key: 0,
-    added_in: Date.now(),
+  // Build sources list - simplified format
+  // The actual source data is embedded in each manga, 
+  // this file just tracks which sources are enabled
+  const sources = Array.from(sourcesSet).map((name, idx) => ({
+    name: name,
+    sortKey: idx,
   }));
 
   // Add all Kotatsu backup files
