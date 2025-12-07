@@ -85,15 +85,42 @@ async function convertKotatsuToTachiyomi(file) {
         }
 
         // ... MAPPING LOGIC ...
-        const tachiCategories = kotatsuCategories.map((c, idx) => ({
-            name: String(c.name || c || "Category " + (idx + 1)), // STRICT STRING
-            order: Number(idx),
-            flags: 0
-        }));
+        
+        // 3a. process Categories first to create a lookup map
+        const categoryLookup = {}; // Kotatsu ID -> Tachi Order (Index)
+        
+        const tachiCategories = kotatsuCategories.map((c, idx) => {
+            // Kotatsu category object keys might be 'name', 'label', 'title', or just the string
+            let name = "Category " + (idx + 1);
+            if (typeof c === 'string') name = c;
+            else if (c && typeof c === 'object') {
+                name = c.name || c.label || c.title || name;
+            }
+            
+            // Store lookup for manga mapping
+            if (c.id !== undefined) {
+                categoryLookup[c.id] = idx;
+            }
+            
+            return {
+                name: String(name), 
+                order: Number(idx),
+                flags: 0
+            };
+        });
 
         const tachiMangaList = kotatsuFavs.map(kManga => {
+            // Resolve categories
+            const mangaCats = [];
+            // Kotatsu usually has 'category_id' (single)
+            if (kManga.category_id !== undefined && categoryLookup[kManga.category_id] !== undefined) {
+                mangaCats.push(Number(categoryLookup[kManga.category_id]));
+            } else if (kManga.categories) {
+                // Some versions might have array?
+            }
+
             return {
-                source: String(mapSourceToTachiyomiId(kManga.source)), // STRICT STRING for int64 in JS if using string mode
+                source: String(mapSourceToTachiyomiId(kManga.source)), 
                 url: String(kManga.url || ""), 
                 title: String(kManga.title || "Unknown Title"),
                 artist: String(kManga.artist || ""),
@@ -103,9 +130,7 @@ async function convertKotatsuToTachiyomi(file) {
                 status: Number(mapStatus(kManga.status)),
                 thumbnailUrl: String(kManga.coverUrl || kManga.thumbnailUrl || ""),
                 dateAdded: Number(kManga.dateAdded || Date.now()),
-                categories: [], // TODO: Map category indices if needed, strictly int32
-                // Add default history or chapters if needed?
-                // For now, we just map basic info.
+                categories: mangaCats, // Linked to category orders
             };
         });
         
