@@ -258,7 +258,7 @@ async function createKotatsuBackup(data) {
     }
   });
 
-  // Convert history
+  // Convert history - each entry needs a full manga object
   const history = [];
   data.manga.forEach((m, mangaIdx) => {
     if (m.history && m.history.length > 0) {
@@ -266,6 +266,33 @@ async function createKotatsuBackup(data) {
         ? window.findKotatsuSourceName(m.source) 
         : 'UNKNOWN';
       const mangaId = generateMangaId(m.url || '', sourceName);
+      
+      // Build tags for manga object
+      const tags = (m.genre || []).map(g => ({
+        id: generateTagId(String(g), sourceName),
+        title: String(g),
+        key: String(g).toLowerCase().replace(/\s+/g, '_'),
+        source: sourceName,
+        pinned: false,
+      }));
+
+      // Build manga object for history entries
+      const mangaObj = {
+        id: mangaId,
+        title: m.title || 'Unknown',
+        alt_title: '',
+        url: m.url || '',
+        public_url: m.url || '',
+        rating: -1.0,
+        nsfw: false,
+        content_rating: 'SAFE',
+        cover_url: m.thumbnailUrl || '',
+        large_cover_url: null,
+        state: mapMihonStatusToKotatsu(m.status),
+        author: m.author || '',
+        source: sourceName,
+        tags: tags,
+      };
       
       m.history.forEach(h => {
         history.push({
@@ -278,6 +305,7 @@ async function createKotatsuBackup(data) {
           percent: 0,
           chapters: 0,
           deleted_at: 0,
+          manga: mangaObj,  // Required by Kotatsu
         });
       });
     }
