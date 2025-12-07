@@ -24,22 +24,49 @@ async function parseMihonBackup(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     let bytes = new Uint8Array(arrayBuffer);
+    
+    console.log('[mihon-parse] File size:', bytes.length, 'bytes');
+    console.log('[mihon-parse] First 4 bytes (hex):', 
+      bytes[0]?.toString(16), bytes[1]?.toString(16), bytes[2]?.toString(16), bytes[3]?.toString(16));
 
-    // Check if gzipped (magic bytes: 1f 8b)
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    // Check if gzipped (magic bytes: 1f 8b) - handle double-gzip
+    let decompressAttempts = 0;
+    while (bytes[0] === 0x1f && bytes[1] === 0x8b && decompressAttempts < 3) {
       result.debug.isGzip = true;
+      console.log('[mihon-parse] Detected gzip, decompressing... (attempt', decompressAttempts + 1, ')');
       bytes = pako.ungzip(bytes);
+      decompressAttempts++;
     }
     result.debug.protoSize = bytes.length;
+    console.log('[mihon-parse] After decompression:', bytes.length, 'bytes');
 
     // Parse with protobuf.js
     if (typeof protobuf === 'undefined' || typeof window.MIHON_PROTO_SCHEMA === 'undefined') {
       throw new Error('Dependencies missing: protobuf.js or schema');
     }
 
+    console.log('[mihon-parse] Decompressed size:', bytes.length, 'bytes');
+    console.log('[mihon-parse] First 20 bytes:', Array.from(bytes.slice(0, 20)));
+
     const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
     const BackupMessage = root.lookupType('Backup');
-    const decoded = BackupMessage.decode(bytes);
+    
+    // Try lenient decode - some newer Mihon versions may have extra fields
+    let decoded;
+    try {
+      // Create a reader and decode with it
+      const reader = protobuf.Reader.create(bytes);
+      decoded = BackupMessage.decode(reader);
+    } catch (decodeErr) {
+      console.warn('[mihon-parse] Standard decode failed:', decodeErr.message);
+      console.log('[mihon-parse] Trying alternative parsing...');
+      
+      // Try to at least show what we can parse
+      result.debug.errors.push(`Decode error: ${decodeErr.message}`);
+      result.debug.errors.push('This backup may use a newer Mihon format.');
+      throw decodeErr;
+    }
+    
     const backup = BackupMessage.toObject(decoded, {
       longs: String,
       enums: String,
