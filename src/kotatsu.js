@@ -397,7 +397,7 @@ async function createKotatsuBackup(data) {
   // Use stringifyWithBigInt for files with large numeric IDs to preserve 64-bit precision
   zip.file('favourites', stringifyWithBigInt(favourites));
   zip.file('categories', JSON.stringify(categories));
-  zip.file('history', stringifyWithBigInt(history));  // Re-enabled
+  // zip.file('history', stringifyWithBigInt(history));  // Disabled to test favourites alone
   zip.file('bookmarks', JSON.stringify([]));
   zip.file('sources', JSON.stringify(sources));
   zip.file('index', JSON.stringify({
