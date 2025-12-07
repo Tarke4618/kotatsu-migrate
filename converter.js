@@ -119,6 +119,7 @@ async function convertKotatsuToTachiyomi(file) {
                 // Some versions might have array?
             }
 
+            return {
                 source: String(window.findSourceId ? window.findSourceId(kManga.source) : "0"), // Smart Source Mapping
                 url: String(kManga.url || ""), 
                 title: String(kManga.title || "Unknown Title"),
