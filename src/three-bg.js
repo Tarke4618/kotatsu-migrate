@@ -42,9 +42,9 @@
 
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-  // Light ash color material
+  // Light ash color material - DOUBLED SIZE
   const material = new THREE.PointsMaterial({
-    size: 0.1,
+    size: 0.2,
     color: 0xAAAAAA, // Light ash/gray color
     transparent: true,
     opacity: 0.5,
