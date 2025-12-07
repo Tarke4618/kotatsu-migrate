@@ -39,9 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Process Kotatsu File
     setupDragDrop(dropKotatsu, fileKotatsu, async (file) => {
-        setStatus(statusKotatsu, 'Processing Kotatsu backup...', 'info');
+        if (!file.name.endsWith('.zip') && !file.name.endsWith('.bk') && !file.name.endsWith('.bk.zip')) {
+            setStatus(statusKotatsu, 'Warning: File does not look like a Kotatsu backup (.zip). Processing anyway...', 'info');
+        } else {
+            setStatus(statusKotatsu, 'Processing Kotatsu backup...', 'info');
+        }
+        
         try {
             const result = await convertKotatsuToTachiyomi(file);
+            // ... (rest of logic)
             if (result.success) {
                 setStatus(statusKotatsu, 'Conversion successful!', 'success');
                 createDownloadLink(statusKotatsu, result.blob, 'backup.tachibk');
@@ -57,6 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Process Tachiyomi File
     setupDragDrop(dropTachiyomi, fileTachiyomi, async (file) => {
+        if (!file.name.endsWith('.tachibk') && !file.name.endsWith('.proto.gz')) {
+           alert("Warning: This does not look like a Tachiyomi backup (.tachibk). Converting a Kotatsu file here will fail!");
+        }
         setStatus(statusTachiyomi, 'Processing Tachiyomi backup...', 'info');
         try {
             const result = await convertTachiyomiToKotatsu(file);
