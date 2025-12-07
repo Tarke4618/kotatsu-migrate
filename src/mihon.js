@@ -139,20 +139,29 @@ async function createMihonBackup(data) {
   }
 
   // Build manga list
-  const backupManga = data.manga.map((m, idx) => {
-    const mangaId = m.id || idx + 1;
+  const backupManga = data.manga.map((rawManga, idx) => {
+    // Kotatsu favorites often have manga data nested under 'manga' key
+    const m = rawManga.manga || rawManga;
+    const mangaId = m.id || rawManga.id || idx + 1;
+    
+    // Debug: log first manga structure
+    if (idx === 0) {
+      console.log('[mihon] Raw Kotatsu manga structure:', rawManga);
+      console.log('[mihon] Extracted manga object:', m);
+    }
     
     // Get categories for this manga
     const mangaCategories = [];
-    if (m.category_id !== undefined && categoryLookup[m.category_id] !== undefined) {
-      mangaCategories.push(Number(categoryLookup[m.category_id]));
+    const catId = rawManga.category_id ?? m.category_id;
+    if (catId !== undefined && categoryLookup[catId] !== undefined) {
+      mangaCategories.push(Number(categoryLookup[catId]));
     }
 
     // Get history for this manga
     const mangaHistory = historyLookup[mangaId] || [];
 
     // Sanitize URL (strip domain for relative path)
-    let cleanUrl = String(m.url || '');
+    let cleanUrl = String(m.url || m.public_url || '');
     try {
       if (cleanUrl.startsWith('http')) {
         const u = new URL(cleanUrl);
@@ -162,27 +171,33 @@ async function createMihonBackup(data) {
 
     // Get source ID (must be numeric for int64)
     let sourceId = '0';
+    const sourceName = m.source || '';
     if (window.findMihonSourceId) {
-      sourceId = window.findMihonSourceId(m.source);
+      sourceId = window.findMihonSourceId(sourceName);
     }
-    // Convert to number or keep as string (protobuf.js handles both for int64)
-    // But we need to ensure it's a valid numeric string
-    const sourceNum = sourceId || '0';
+    
+    // Convert source to proper Long value for protobuf
+    // protobuf.js accepts strings for int64, but they must be valid numbers
+    const sourceAsLong = protobuf.util.Long 
+      ? protobuf.util.Long.fromString(sourceId || '0', true)
+      : parseInt(sourceId) || 0;
 
     return {
-      source: sourceNum,
+      source: sourceAsLong,
       url: cleanUrl,
-      title: String(m.title || 'Unknown'),
+      title: String(m.title || m.name || 'Unknown'),
       artist: String(m.artist || m.author || ''),
       author: String(m.author || ''),
       description: String(m.description || ''),
       genre: Array.isArray(m.genre) ? m.genre.map(String) : 
-             (m.tags ? m.tags.map(t => t.title || String(t)) : []),
+             Array.isArray(m.tags) ? m.tags.map(t => t.title || t.name || String(t)) : [],
       status: mapKotatsuStatusToMihon(m.state || m.status),
-      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || ''),
-      dateAdded: Number(m.created_at || m.dateAdded || Date.now()),
+      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || ''),
+      dateAdded: protobuf.util.Long 
+        ? protobuf.util.Long.fromNumber(Number(rawManga.created_at || m.dateAdded || Date.now()), true)
+        : Number(rawManga.created_at || m.dateAdded || Date.now()),
       favorite: true, // CRITICAL: Must be true for library import
-      categories: mangaCategories,
+      categories: mangaCategories.map(c => protobuf.util.Long ? protobuf.util.Long.fromNumber(c, true) : c),
       chapters: [], // Kotatsu doesn't export chapter lists
       history: mangaHistory,
     };
@@ -190,9 +205,12 @@ async function createMihonBackup(data) {
 
   // Build sources list
   const sourceIds = new Set();
-  backupManga.forEach(m => sourceIds.add(m.source));
+  backupManga.forEach(m => {
+    const srcId = m.source.toString ? m.source.toString() : String(m.source);
+    sourceIds.add(srcId);
+  });
   const backupSources = Array.from(sourceIds).map(id => ({
-    sourceId: id,
+    sourceId: protobuf.util.Long ? protobuf.util.Long.fromString(id, true) : parseInt(id) || 0,
     name: window.findKotatsuSourceName ? window.findKotatsuSourceName(id) : 'Unknown',
   }));
 
