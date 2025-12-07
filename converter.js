@@ -117,6 +117,14 @@ async function convertKotatsuToTachiyomi(file) {
         }
         const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
         const BackupMessage = root.lookupType("Backup");
+        // ... MAPPING LOGIC ... PROCEED TO PAYLOAD ...
+        
+        result.debugData.payloadPreview = {
+            mangaCount: tachiMangaList.length,
+            categoryCount: tachiCategories.length,
+            categories: tachiCategories
+        };
+
         const payload = {
             backupManga: tachiMangaList,
             backupCategories: tachiCategories,
@@ -124,7 +132,17 @@ async function convertKotatsuToTachiyomi(file) {
         
         // Verify payload
         const errMsg = BackupMessage.verify(payload);
-        if (errMsg) throw Error("Proto verification failed: " + errMsg);
+        if (errMsg) {
+            console.warn("Proto verification failed:", errMsg);
+            result.debugData.verificationError = errMsg;
+            result.debugData.payloadDump = JSON.parse(JSON.stringify(payload)); // Deep copy for debug
+            
+            // OPTION: We can try to encode anyway? Sometimes verify is too strict?
+            // But usually verify is right.
+            // Let's try to fix the common 'string expected' by removing nulls recursively?
+            // For now, throw but with better info
+            throw new Error(`Proto verification failed: ${errMsg}. Check Raw Data -> payloadDump.`);
+        }
 
         const message = BackupMessage.create(payload);
         const buffer = BackupMessage.encode(message).finish();
