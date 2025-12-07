@@ -42,12 +42,16 @@ document.addEventListener('DOMContentLoaded', () => {
         setStatus(statusKotatsu, 'Processing Kotatsu backup...', 'info');
         try {
             const result = await convertKotatsuToTachiyomi(file);
-            setStatus(statusKotatsu, 'Conversion successful!', 'success');
-            createDownloadLink(statusKotatsu, result.blob, 'backup.tachibk');
+            if (result.success) {
+                setStatus(statusKotatsu, 'Conversion successful!', 'success');
+                createDownloadLink(statusKotatsu, result.blob, 'backup.tachibk');
+            } else {
+                setStatus(statusKotatsu, 'Conversion failed: ' + (result.debugData.error || "Unknown error"), 'error');
+            }
             createDebugLink(statusKotatsu, result.debugData);
         } catch (err) {
             console.error(err);
-            setStatus(statusKotatsu, 'Error: ' + err.message, 'error');
+            setStatus(statusKotatsu, 'Critical Error: ' + err.message, 'error');
         }
     });
 
@@ -56,12 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
         setStatus(statusTachiyomi, 'Processing Tachiyomi backup...', 'info');
         try {
             const result = await convertTachiyomiToKotatsu(file);
-            setStatus(statusTachiyomi, 'Conversion successful!', 'success'); // Note: Kotatsu usually uses generic names in zip
-            createDownloadLink(statusTachiyomi, result.blob, 'kotatsu_backup.zip');
+            if (result.success) {
+                setStatus(statusTachiyomi, 'Conversion successful!', 'success');
+                createDownloadLink(statusTachiyomi, result.blob, 'kotatsu_backup.zip');
+            } else {
+                setStatus(statusTachiyomi, 'Conversion failed: ' + (result.debugData.error || "Unknown error"), 'error');
+            }
             createDebugLink(statusTachiyomi, result.debugData);
         } catch (err) {
             console.error(err);
-            setStatus(statusTachiyomi, 'Error: ' + err.message, 'error');
+            setStatus(statusTachiyomi, 'Critical Error: ' + err.message, 'error');
         }
     });
 

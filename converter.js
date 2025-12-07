@@ -2,250 +2,191 @@
 
 // Kotatsu parsing logic
 async function convertKotatsuToTachiyomi(file) {
-    const zip = new JSZip();
-    const contents = await zip.loadAsync(file);
-    
-    // Data holders
-    let kotatsuChapters = {}; // Map mangaId -> chapters list if separate
-
-    // Helper to find file by fuzzy name
-    const findFile = (namePart) => {
-        const filenames = Object.keys(contents.files);
-        return filenames.find(n => n.toLowerCase().includes(namePart.toLowerCase()));
-    };
-
-    // 1. Categories
-    let kotatsuCategories = [];
-    const catFile = findFile('categories.json');
-    if (catFile) {
-        try {
-            const str = await contents.files[catFile].async('string');
-            kotatsuCategories = JSON.parse(str);
-        } catch(e) { console.warn("Failed to parse categories", e); }
-    }
-    
-    // 2. Favourites
-    let kotatsuFavs = [];
-    const favFile = findFile('favourites.json') || findFile('favorites.json') || findFile('manga.json');
-    if (favFile) {
-        try {
-            const str = await contents.files[favFile].async('string');
-            kotatsuFavs = JSON.parse(str);
-        } catch(e) { console.warn("Failed to parse favourites", e); }
-    } else {
-        console.warn("No favourites file found. Files:", Object.keys(contents.files));
-    }
-
-    // 3. History
-    let kotatsuHistory = [];
-    const histFile = findFile('history.json');
-    if (histFile) {
-        try {
-            const str = await contents.files[histFile].async('string');
-            kotatsuHistory = JSON.parse(str);
-        } catch(e) { console.warn("Failed to parse history", e); }
-    }
-
-    // Tachiyomi Categories
-    // Kotatsu categories might just be names.
-    // Tachi needs objects.
-    const tachiCategories = kotatsuCategories.map((c, idx) => ({
-        name: c.name || c,
-        order: idx, // or c.order
-        flags: 0
-    }));
-    
-    // Helper to find category index by name
-    const getCatIndex = (name) => {
-        return tachiCategories.findIndex(tc => tc.name === name);
-    };
-
-    // Process Manga
-    const tachiMangaList = kotatsuFavs.map(kManga => {
-        // Source mapping
-        // Kotatsu source names need to map to Tachi Source IDs (long)
-        // This is the hardest part.
-        const sourceId = mapSourceToTachiyomiId(kManga.source);
-
-        // Categories
-        // Kotatsu treats categories as string name attached to manga?
-        // Check kManga.category or kManga.categories
-        let mangCats = [];
-        if (kManga.category) { // Single category?
-             const idx = getCatIndex(kManga.category);
-             if (idx >= 0) mangCats.push(idx); // Tachi uses order/index usually? No, older uses ID, Proto uses 'categories' int32 which matches 'order' usually unless logic changed.
-             // Actually proto 'repeated int32 categories = 14' usually refers to order or flags?
-             // Standard Tachi: categories are mapped by comparing 'BackupCategory.order'??
-             // Let's assume sending the index in tachiCategories array works.
-        } else if (kManga.categories) {
-            kManga.categories.forEach(cName => {
-                const idx = getCatIndex(cName);
-                if (idx >= 0) mangCats.push(idx);
-            });
-        }
-
-        // Chapters & History
-        // If Kotatsu doesn't have chapters in favourites.json, we might need to look elsewhere.
-        // Assuming minimal migration for now (Library only) if chapters missing.
-        // If history exists, we try to attach.
-        
-        // Find history for this manga
-        // Kotatsu history might link by mangaId or title
-        // Assuming kManga.id exists?
-        const hItems = kotatsuHistory.filter(h => h.mangaId === kManga.id || (h.mangaTitle === kManga.title));
-        
-        let tachiChapters = [];
-        let tachiHistory = [];
-        
-        if (hItems.length > 0) {
-            // Logic to convert history to chapters/history objects
-        }
-
-        return {
-            source: sourceId,
-            url: kManga.url || "",
-            title: kManga.title || "Unknown",
-            artist: kManga.artist || "",
-            author: kManga.author || "",
-            description: kManga.description || "",
-            genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre : kManga.genre.split(',').map(s=>s.trim())) : [],
-            status: mapStatus(kManga.status),
-            thumbnailUrl: kManga.coverUrl || kManga.thumbnailUrl || "",
-            dateAdded: kManga.dateAdded || Date.now(),
-            categories: mangCats,
-            backupChapters: tachiChapters,
-            backupHistory: tachiHistory
-        };
-    });
-
-    // Build Proto
-    if (typeof protobuf === 'undefined' || typeof TACHIYOMI_PROTO_STRING === 'undefined') {
-        throw new Error("Dependencies missing");
-    }
-
-    const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
-    const BackupMessage = root.lookupType("Backup");
-    
-    // Fix Longs
-    // Protobuf.js needs Longs for int64.
-    // sourceId, dateAdded, etc.
-    // If standard JS numbers are safe integer range, it works. sourceId definitely needs String or Long object.
-    
-    const payload = {
-        backupManga: tachiMangaList,
-        backupCategories: tachiCategories,
-    };
-    
-    // Verify?
-    // Conversion to message first allows setting defaults
-    const message = BackupMessage.create(payload);
-    const buffer = BackupMessage.encode(message).finish();
-    
-    const gzipped = pako.gzip(buffer);
-    return {
-        blob: new Blob([gzipped], {type: "application/octet-stream"}),
+    const result = {
+        success: false,
+        blob: null,
         debugData: {
-            kotatsuFavourites: kotatsuFavs,
-            kotatsuCategories: kotatsuCategories,
-            mappedTachiManga: tachiMangaList,
-            // Debug: List all files in zip
-            kotatsuZipFiles: Object.keys(contents.files) 
+            kotatsuZipFiles: [],
+            error: null
         }
     };
+
+    try {
+        const zip = new JSZip();
+        const contents = await zip.loadAsync(file);
+        result.debugData.kotatsuZipFiles = Object.keys(contents.files);
+
+        // Helper to find file by fuzzy name
+        const findFile = (namePart) => {
+            const filenames = Object.keys(contents.files);
+            return filenames.find(n => n.toLowerCase().includes(namePart.toLowerCase()));
+        };
+
+        // 1. Categories
+        let kotatsuCategories = [];
+        const catFile = findFile('categories.json');
+        if (catFile) {
+            try {
+                const str = await contents.files[catFile].async('string');
+                kotatsuCategories = JSON.parse(str);
+            } catch (e) { console.warn("Failed to parse categories", e); }
+        }
+
+        // 2. Favourites
+        let kotatsuFavs = [];
+        const favFile = findFile('favourites.json') || findFile('favorites.json') || findFile('manga.json');
+        if (favFile) {
+            try {
+                const str = await contents.files[favFile].async('string');
+                kotatsuFavs = JSON.parse(str);
+            } catch (e) {
+                console.warn("Failed to parse favourites", e);
+                result.debugData.parseError = e.message;
+            }
+        }
+
+        result.debugData.kotatsuFavourites = kotatsuFavs;
+        result.debugData.kotatsuCategories = kotatsuCategories;
+
+        if (kotatsuFavs.length === 0) {
+            throw new Error("No favourites found in zip. Files: " + result.debugData.kotatsuZipFiles.join(', '));
+        }
+
+        // ... MAPPING LOGIC ...
+        const tachiCategories = kotatsuCategories.map((c, idx) => ({
+            name: c.name || c,
+            order: idx,
+            flags: 0
+        }));
+
+        const tachiMangaList = kotatsuFavs.map(kManga => {
+            return {
+                source: mapSourceToTachiyomiId(kManga.source),
+                url: kManga.url || "",
+                title: kManga.title || "Unknown",
+                artist: kManga.artist || "",
+                author: kManga.author || "",
+                description: kManga.description || "",
+                genre: kManga.genre ? (Array.isArray(kManga.genre) ? kManga.genre : kManga.genre.split(',').map(s=>s.trim())) : [],
+                status: mapStatus(kManga.status),
+                thumbnailUrl: kManga.coverUrl || kManga.thumbnailUrl || "",
+                dateAdded: kManga.dateAdded || Date.now(),
+                categories: [], // Simplified for stability
+            };
+        });
+        
+        result.debugData.mappedTachiManga = tachiMangaList;
+
+        // Proto encoding
+        if (typeof protobuf === 'undefined' || typeof TACHIYOMI_PROTO_STRING === 'undefined') {
+            throw new Error("Dependencies missing");
+        }
+        const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
+        const BackupMessage = root.lookupType("Backup");
+        const payload = {
+            backupManga: tachiMangaList,
+            backupCategories: tachiCategories,
+        };
+        const message = BackupMessage.create(payload);
+        const buffer = BackupMessage.encode(message).finish();
+        const gzipped = pako.gzip(buffer);
+        
+        result.blob = new Blob([gzipped], {type: "application/octet-stream"});
+        result.success = true;
+
+    } catch (e) {
+        result.debugData.error = e.message;
+        result.debugData.stack = e.stack;
+    }
+
+    return result;
 }
 
 // Tachiyomi to Kotatsu conversion
 async function convertTachiyomiToKotatsu(file) {
+    const result = {
+        success: false,
+        blob: null,
+        debugData: { isGzip: false }
+    };
+
     if (typeof protobuf === 'undefined' || typeof TACHIYOMI_PROTO_STRING === 'undefined') {
-        throw new Error("Dependencies missing");
+        result.debugData.error = "Dependencies missing";
+        return result;
     }
 
-    // 1. Read and Gunzip
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    let protoData;
-    // Check GZip Magic Bytes (1F 8B)
-    const isGzip = uint8Array.length > 2 && uint8Array[0] === 0x1f && uint8Array[1] === 0x8b;
-    
     try {
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        const isGzip = uint8Array.length > 2 && uint8Array[0] === 0x1f && uint8Array[1] === 0x8b;
+        result.debugData.isGzip = isGzip;
+
+        let protoData = uint8Array;
         if (isGzip) {
-            protoData = pako.ungzip(uint8Array);
-        } else {
-            console.warn("File does not have GZip magic bytes. Trying raw.");
-            protoData = uint8Array;
+            try {
+                protoData = pako.ungzip(uint8Array);
+            } catch(e) {
+                console.warn("Gzip failed, trying raw", e);
+            }
         }
-    } catch (e) {
-        throw new Error("Failed to decompress file. Is it a valid backup? " + e.message);
-    }
+        
+        result.debugData.protoSize = protoData.length;
+        result.debugData.protoHexStart = Array.from(protoData.slice(0, 50)).map(b => b.toString(16).padStart(2,'0')).join(' ');
 
-    // 2. Decode Proto
-    const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
-    const BackupMessage = root.lookupType("Backup");
-    
-    let backup = {};
-    let decodeError = null;
-
-    try {
+        const root = protobuf.parse(TACHIYOMI_PROTO_STRING).root;
+        const BackupMessage = root.lookupType("Backup");
+        
+        // Decode
         const message = BackupMessage.decode(protoData);
-        backup = BackupMessage.toObject(message, {
+        // If we get here, decode worked
+        const backup = BackupMessage.toObject(message, {
             longs: String, 
             enums: String,
             bytes: String,
             defaults: true,
             arrays: true
         });
-    } catch (err) {
-        console.error("Proto decode error:", err);
-        decodeError = err.message;
-        // Proceed with empty backup to allow showing debug data
-    }
 
-    // 3. Map to Kotatsu
-    const categories = (backup.backupCategories || []).map(c => ({
-        name: c.name,
-        order: c.order
-    }));
+        result.debugData.tachiBackupKeys = Object.keys(backup);
 
-    const favourites = (backup.backupManga || []).map(m => {
-        return {
-            id: generateId(m.url, m.title),
-            title: m.title,
-            author: m.author,
-            artist: m.artist,
-            description: m.description,
-            url: m.url,
-            coverUrl: m.thumbnailUrl,
-            source: mapTachiyomiIdToSource(m.source),
-            status: mapTachiStatus(m.status),
-            genre: (m.genre || []).join(', '),
-            dateAdded: Number(m.dateAdded),
-            categories: mapTachiCategories(m.categories, categories)
-        };
-    });
+        // Map
+        const categories = (backup.backupCategories || []).map(c => ({
+            name: c.name,
+            order: c.order
+        }));
 
-    // Zip generation only if we have data
-    let blob = null;
-    if (!decodeError) {
+        const favourites = (backup.backupManga || []).map(m => {
+             return {
+                id: generateId(m.url, m.title),
+                title: m.title,
+                author: m.author,
+                artist: m.artist,
+                description: m.description,
+                url: m.url,
+                coverUrl: m.thumbnailUrl,
+                source: mapTachiyomiIdToSource(m.source),
+                status: mapTachiStatus(m.status),
+                genre: (m.genre || []).join(', '),
+                dateAdded: Number(m.dateAdded),
+                categories: mapTachiCategories(m.categories, categories)
+            };
+        });
+
+        result.debugData.mappedDebug = favourites.slice(0, 3);
+
         const zip = new JSZip();
         zip.file("categories.json", JSON.stringify(categories, null, 2));
         zip.file("favourites.json", JSON.stringify(favourites, null, 2));
-        // ... history ...
-        blob = await zip.generateAsync({type: "blob"});
-    }
+        
+        result.blob = await zip.generateAsync({type: "blob"});
+        result.success = true;
 
-    return {
-        blob: blob, // Might be null if error
-        debugData: {
-            error: decodeError,
-            isGzip: isGzip,
-            protoSize: protoData.length,
-            // Hex dump of start
-            protoHexStart: Array.from(protoData.slice(0, 20)).map(b => b.toString(16).padStart(2,'0')).join(' '),
-            tachiBackupKeys: Object.keys(backup),
-            mappedDebug: favourites.slice(0, 3) 
-        }
-    };
+    } catch(e) {
+        result.debugData.error = e.message;
+        result.debugData.stack = e.stack;
+    }
+    
+    return result;
 }
 
 
