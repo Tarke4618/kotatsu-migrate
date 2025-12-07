@@ -51,7 +51,7 @@ async function convertKotatsuToTachiyomi(file) {
         return tachiCategories.findIndex(tc => tc.name === name);
     };
 
-    // Process Managa
+    // Process Manga
     const tachiMangaList = kotatsuFavs.map(kManga => {
         // Source mapping
         // Kotatsu source names need to map to Tachi Source IDs (long)
