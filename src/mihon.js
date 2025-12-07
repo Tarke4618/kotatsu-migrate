@@ -160,13 +160,17 @@ async function createMihonBackup(data) {
       }
     } catch (e) { /* keep original */ }
 
-    // Get source ID
-    const sourceId = window.findMihonSourceId 
-      ? window.findMihonSourceId(m.source) 
-      : '0';
+    // Get source ID (must be numeric for int64)
+    let sourceId = '0';
+    if (window.findMihonSourceId) {
+      sourceId = window.findMihonSourceId(m.source);
+    }
+    // Convert to number or keep as string (protobuf.js handles both for int64)
+    // But we need to ensure it's a valid numeric string
+    const sourceNum = sourceId || '0';
 
     return {
-      source: sourceId,
+      source: sourceNum,
       url: cleanUrl,
       title: String(m.title || 'Unknown'),
       artist: String(m.artist || m.author || ''),
@@ -198,15 +202,25 @@ async function createMihonBackup(data) {
     backupSources,
   };
 
+  // DEBUG: Store payload for inspection
+  window.lastMihonPayload = payload;
+  console.log('[mihon] Payload preview:', {
+    mangaCount: backupManga.length,
+    categoryCount: backupCategories.length,
+    firstManga: backupManga[0],
+  });
+
   // Verify (non-blocking)
   const errMsg = BackupMessage.verify(payload);
   if (errMsg) {
     console.warn('[mihon] Proto verification warning:', errMsg);
+    window.lastMihonVerifyError = errMsg;
   }
 
   // Encode and compress
   const message = BackupMessage.create(payload);
   const buffer = BackupMessage.encode(message).finish();
+  console.log('[mihon] Encoded buffer size:', buffer.length);
   const gzipped = pako.gzip(buffer);
 
   return new Blob([gzipped], { type: 'application/octet-stream' });
