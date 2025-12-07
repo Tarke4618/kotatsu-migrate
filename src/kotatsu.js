@@ -274,7 +274,7 @@ async function createKotatsuBackup(data) {
     
     // Debug first few manga
     if (mangaIdx < 3) {
-      console.log(`[kotatsu] Manga "${m.title}": Mihon categories=${JSON.stringify(mihonCatIds)}`);
+      console.log(`[kotatsu] Manga "${m.title}": Mihon categories=${JSON.stringify(mihonCatRefs)}`);
     }
   });
 
