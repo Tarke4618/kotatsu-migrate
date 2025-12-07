@@ -362,6 +362,14 @@ async function createKotatsuBackup(data) {
     added_in: nowSeconds,
   }));
 
+  // Debug: Count favourites by category before writing
+  const favCatCounts = {};
+  favourites.forEach(f => {
+    favCatCounts[f.category_id] = (favCatCounts[f.category_id] || 0) + 1;
+  });
+  console.log(`[kotatsu] Total favourites created: ${favourites.length}`);
+  console.log('[kotatsu] Favourites per category_id:', favCatCounts);
+
   // Add essential Kotatsu backup files
   // Only include files that are needed for restore - empty files may cause errors
   zip.file('favourites', JSON.stringify(favourites));
