@@ -135,30 +135,38 @@ async function createKotatsuBackup(data) {
     return h.toString();
   }
 
-  // Build category lookup: Mihon category ID -> Kotatsu category_id
-  // Mihon stores categories with their own IDs, manga references these IDs
-  const categoryLookup = {};
+  // Build category lookup: Mihon category reference -> Kotatsu category_id
+  // IMPORTANT: Mihon manga.categories array stores the ORDER value, not the ID!
+  // We also map by ID as a fallback
+  const categoryByOrder = {};  // order -> kotatsu category_id
+  const categoryById = {};     // id -> kotatsu category_id
+  
   const categories = data.categories.map((c, idx) => {
-    // Use Mihon's category ID if available, otherwise generate one
-    const mihonId = c.id != null ? c.id : idx;
     const kotatsuCatId = idx + 1; // Kotatsu uses 1-based category IDs
+    const mihonOrder = c.order != null ? c.order : idx;
+    const mihonId = c.id != null ? c.id : idx;
     
     const cat = {
       category_id: kotatsuCatId,
       created_at: Date.now(),
-      sort_key: c.order || idx,
+      sort_key: mihonOrder,
       title: c.name || `Category ${idx + 1}`,
-      order: c.order != null ? String(c.order) : null,
+      order: String(mihonOrder),
       track: true,
       show_in_lib: true,
       deleted_at: 0,
     };
     
-    // Map Mihon's category ID to Kotatsu's category_id
-    categoryLookup[mihonId] = kotatsuCatId;
-    console.log(`[kotatsu] Category mapping: Mihon ID ${mihonId} -> Kotatsu ID ${kotatsuCatId} (${c.name})`);
+    // Map BOTH order and id to kotatsu category_id
+    categoryByOrder[mihonOrder] = kotatsuCatId;
+    categoryById[mihonId] = kotatsuCatId;
+    
+    console.log(`[kotatsu] Category: "${c.name}" - order=${mihonOrder}, id=${mihonId} -> Kotatsu ID ${kotatsuCatId}`);
     return cat;
   });
+  
+  console.log('[kotatsu] categoryByOrder lookup:', categoryByOrder);
+  console.log('[kotatsu] categoryById lookup:', categoryById);
 
   // Collect unique sources
   const sourcesSet = new Set();
@@ -205,10 +213,15 @@ async function createKotatsuBackup(data) {
       tags: tags,
     };
 
-    // Get category IDs from Mihon manga
-    const mihonCatIds = m.categories || [];
+    // Get category references from Mihon manga
+    // Mihon stores ORDER values in manga.categories, not category IDs
+    const mihonCatRefs = m.categories || [];
     
-    if (mihonCatIds.length === 0) {
+    if (mangaIdx < 5) {
+      console.log(`[kotatsu] Manga "${m.title}": categories array = [${mihonCatRefs.join(', ')}]`);
+    }
+    
+    if (mihonCatRefs.length === 0) {
       // No category - use first available or default to 1
       const defaultCatId = categories.length > 0 ? categories[0].category_id : 1;
       favourites.push({
@@ -222,9 +235,12 @@ async function createKotatsuBackup(data) {
       });
     } else {
       // Create one favourite entry per category
-      mihonCatIds.forEach(mihonCatId => {
-        // Look up Kotatsu category_id using Mihon's category ID
-        const kotatsuCatId = categoryLookup[mihonCatId];
+      mihonCatRefs.forEach(catRef => {
+        // Try ORDER lookup first (Mihon uses order), then ID lookup as fallback
+        let kotatsuCatId = categoryByOrder[catRef];
+        if (kotatsuCatId == null) {
+          kotatsuCatId = categoryById[catRef];
+        }
         
         if (kotatsuCatId != null) {
           favourites.push({
@@ -236,9 +252,12 @@ async function createKotatsuBackup(data) {
             deleted_at: 0,
             manga: mangaObj,
           });
+          if (mangaIdx < 5) {
+            console.log(`[kotatsu]   -> catRef ${catRef} resolved to kotatsu category ${kotatsuCatId}`);
+          }
         } else {
-          // Mihon category ID not found in our lookup - use default
-          console.warn(`[kotatsu] Unknown Mihon category ID: ${mihonCatId} for manga "${m.title}"`);
+          // Category reference not found - use default
+          console.warn(`[kotatsu] Unknown category ref: ${catRef} for manga "${m.title}"`);
           const defaultCatId = categories.length > 0 ? categories[0].category_id : 1;
           favourites.push({
             manga_id: mangaId,
