@@ -362,17 +362,13 @@ async function createKotatsuBackup(data) {
     added_in: nowSeconds,
   }));
 
-  // Add all Kotatsu backup files
+  // Add essential Kotatsu backup files
+  // Only include files that are needed for restore - empty files may cause errors
   zip.file('favourites', JSON.stringify(favourites));
   zip.file('categories', JSON.stringify(categories));
   zip.file('history', JSON.stringify(history));
   zip.file('bookmarks', JSON.stringify([]));
   zip.file('sources', JSON.stringify(sources));
-  zip.file('settings', JSON.stringify([]));
-  zip.file('statistics', JSON.stringify([]));
-  zip.file('scrobbling', JSON.stringify([]));
-  zip.file('saved_filters', JSON.stringify([]));
-  zip.file('reader_grid', JSON.stringify([]));
   zip.file('index', JSON.stringify({
     app_id: 'org.koitharu.kotatsu',
     app_version: 700,
