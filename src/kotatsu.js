@@ -114,18 +114,28 @@ async function parseKotatsuBackup(file) {
 async function createKotatsuBackup(data) {
   const zip = new JSZip();
 
+  // Custom JSON stringify that converts quoted large integers to unquoted numbers
+  // This preserves 64-bit precision that JavaScript Number would lose
+  function stringifyWithBigInt(obj) {
+    // First stringify normally - BigInt values stored as strings
+    let json = JSON.stringify(obj);
+    // Replace quoted numeric strings (negative or positive, 15+ digits) with unquoted numbers
+    // This pattern matches: "-1234567890123456" or "1234567890123456"
+    json = json.replace(/"(-?\d{15,})"/g, '$1');
+    return json;
+  }
+
   // Generate consistent manga ID using hash (matches Kotatsu's approach)
   // Uses a 64-bit-like hash similar to Kotlin's hashCode
-  // Returns a Number for JSON compatibility
+  // Returns a STRING to preserve full precision (JS Number loses precision)
   function generateMangaId(url, source) {
     const str = `${source}:${url}`;
     let h = 0n;
     for (let i = 0; i < str.length; i++) {
       h = BigInt.asIntN(64, 31n * h + BigInt(str.charCodeAt(i)));
     }
-    // Convert BigInt to Number - may lose precision for very large values
-    // but Kotatsu expects numeric IDs in JSON
-    return Number(h);
+    // Return as string - will be converted to unquoted number by stringifyWithBigInt
+    return h.toString();
   }
 
   // Generate tag ID from title and source
@@ -135,7 +145,7 @@ async function createKotatsuBackup(data) {
     for (let i = 0; i < str.length; i++) {
       h = BigInt.asIntN(64, 31n * h + BigInt(str.charCodeAt(i)));
     }
-    return Number(h);
+    return h.toString();
   }
 
   // Build category lookup: Mihon category reference -> Kotatsu category_id
@@ -384,10 +394,10 @@ async function createKotatsuBackup(data) {
   console.log('[kotatsu] Favourites per category_id:', favCatCounts);
 
   // Add essential Kotatsu backup files
-  // Only include files that are needed for restore - empty files may cause errors
-  zip.file('favourites', JSON.stringify(favourites));
+  // Use stringifyWithBigInt for files with large numeric IDs to preserve 64-bit precision
+  zip.file('favourites', stringifyWithBigInt(favourites));
   zip.file('categories', JSON.stringify(categories));
-  // zip.file('history', JSON.stringify(history));  // Temporarily disabled to test if causing issues
+  zip.file('history', stringifyWithBigInt(history));  // Re-enabled
   zip.file('bookmarks', JSON.stringify([]));
   zip.file('sources', JSON.stringify(sources));
   zip.file('index', JSON.stringify({
