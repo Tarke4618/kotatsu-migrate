@@ -91,20 +91,43 @@ message BackupTracking {
 
 message BackupPreference {
   optional string key = 1;
-  optional BackupPreferenceValue value = 2;
+  // PreferenceValue is polymorphic - use oneof to handle all types
+  oneof value {
+    IntPreferenceValue intValue = 2;
+    LongPreferenceValue longValue = 3;
+    FloatPreferenceValue floatValue = 4;
+    StringPreferenceValue stringValue = 5;
+    BooleanPreferenceValue boolValue = 6;
+    StringSetPreferenceValue stringSetValue = 7;
+  }
 }
 
-message BackupPreferenceValue {
-  optional string stringValue = 1;
-  optional int32 intValue = 2;
-  optional int64 longValue = 3;
-  optional float floatValue = 4;
-  optional bool booleanValue = 5;
-  repeated string stringSetValue = 6;
+message IntPreferenceValue {
+  optional int32 value = 1;
+}
+
+message LongPreferenceValue {
+  optional int64 value = 1;
+}
+
+message FloatPreferenceValue {
+  optional float value = 1;
+}
+
+message StringPreferenceValue {
+  optional string value = 1;
+}
+
+message BooleanPreferenceValue {
+  optional bool value = 1;
+}
+
+message StringSetPreferenceValue {
+  repeated string value = 1;
 }
 
 message BackupSourcePreferences {
-  optional int64 sourceKey = 1;
+  optional string sourceKey = 1;
   repeated BackupPreference prefs = 2;
 }
 
