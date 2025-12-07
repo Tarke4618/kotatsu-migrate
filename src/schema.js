@@ -10,11 +10,12 @@ message Backup {
   repeated BackupSource backupSources = 101;
   repeated BackupPreference backupPreferences = 104;
   repeated BackupSourcePreferences backupSourcePreferences = 105;
+  repeated BackupExtensionRepos backupExtensionRepo = 106;
 }
 
 message BackupManga {
-  required int64 source = 1;
-  required string url = 2;
+  optional int64 source = 1;
+  optional string url = 2;
   optional string title = 3;
   optional string artist = 4;
   optional string author = 5;
@@ -36,18 +37,20 @@ message BackupManga {
   optional int64 favoriteModifiedAt = 107;
   repeated string excludedScanlators = 108;
   optional int64 version = 109;
+  optional string notes = 110;
+  optional bool initialized = 111;
 }
 
 message BackupCategory {
-  required string name = 1;
+  optional string name = 1;
   optional int64 order = 2;
   optional int64 id = 3;
   optional int64 flags = 100;
 }
 
 message BackupChapter {
-  required string url = 1;
-  required string name = 2;
+  optional string url = 1;
+  optional string name = 2;
   optional string scanlator = 3;
   optional bool read = 4;
   optional bool bookmark = 5;
@@ -61,19 +64,19 @@ message BackupChapter {
 }
 
 message BackupHistory {
-  required string url = 1;
-  required int64 lastRead = 2;
+  optional string url = 1;
+  optional int64 lastRead = 2;
   optional int64 readDuration = 3;
 }
 
 message BackupSource {
   optional string name = 1;
-  required int64 sourceId = 2;
+  optional int64 sourceId = 2;
 }
 
 message BackupTracking {
-  required int32 syncId = 1;
-  required int64 libraryId = 2;
+  optional int32 syncId = 1;
+  optional int64 libraryId = 2;
   optional int32 mediaIdInt = 3;
   optional string trackingUrl = 4;
   optional string title = 5;
@@ -87,13 +90,30 @@ message BackupTracking {
 }
 
 message BackupPreference {
-  required string key = 1;
-  required string value = 2;
+  optional string key = 1;
+  optional BackupPreferenceValue value = 2;
+}
+
+message BackupPreferenceValue {
+  optional string stringValue = 1;
+  optional int32 intValue = 2;
+  optional int64 longValue = 3;
+  optional float floatValue = 4;
+  optional bool booleanValue = 5;
+  repeated string stringSetValue = 6;
 }
 
 message BackupSourcePreferences {
-  required int64 sourceKey = 1;
+  optional int64 sourceKey = 1;
   repeated BackupPreference prefs = 2;
+}
+
+message BackupExtensionRepos {
+  optional string baseUrl = 1;
+  optional string name = 2;
+  optional string shortName = 3;
+  optional string website = 4;
+  optional string signingKeyFingerprint = 5;
 }
 `;
 
