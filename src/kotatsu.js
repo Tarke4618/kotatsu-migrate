@@ -213,6 +213,12 @@ async function createKotatsuBackup(data) {
     
     const mangaId = generateMangaId(m.url || '', sourceName);
     
+    // Debug: verify mangaId is a number
+    if (mangaIdx < 2) {
+      console.log(`[kotatsu] mangaId for "${m.title}": ${mangaId}, type: ${typeof mangaId}`);
+    }
+    
+    
     // Build tags from genre array with proper id and pinned fields
     const tags = (m.genre || []).map(g => ({
       id: generateTagId(String(g), sourceName),
