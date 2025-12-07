@@ -59,6 +59,23 @@ async function parseMihonBackup(file) {
       decoded = BackupMessage.decode(reader);
     } catch (decodeErr) {
       console.warn('[mihon-parse] Standard decode failed:', decodeErr.message);
+      
+      // Try to extract offset from error message or property
+      let match = decodeErr.message.match(/at offset (\d+)/);
+      let offset = match ? parseInt(match[1]) : (decodeErr.offset || -1);
+
+      if (offset !== -1 && offset < bytes.length) {
+        const start = Math.max(0, offset - 20);
+        const end = Math.min(bytes.length, offset + 20);
+        const snippet = Array.from(bytes.slice(start, end));
+        const hex = snippet.map(b => b.toString(16).padStart(2, '0')).join(' ');
+        console.log(`[mihon-parse] Bytes around offset ${offset}:`, hex);
+        console.log(`[mihon-parse] Pointer ^ at byte ${offset - start}`);
+        
+        result.debug.errors.push(`Parse error at offset ${offset}`);
+        result.debug.errors.push(`Bytes: ${hex}`);
+      }
+      
       console.log('[mihon-parse] Trying alternative parsing...');
       
       // Try to at least show what we can parse
