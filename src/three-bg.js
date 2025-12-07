@@ -1,4 +1,4 @@
-// src/three-bg.js - Three.js Futuristic Particle Background
+// src/three-bg.js - Three.js Particle Background with Mouse Interaction
 
 (function() {
   const canvas = document.getElementById('three-canvas');
@@ -13,46 +13,45 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(0x000000, 1);
 
-  // Particle system
-  const particleCount = 500;
+  // Mouse position in 3D space
+  let mouseX = 0;
+  let mouseY = 0;
+  let targetMouseX = 0;
+  let targetMouseY = 0;
+
+  // Particle system - Light ash color
+  const particleCount = 800;
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(particleCount * 3);
-  const colors = new Float32Array(particleCount * 3);
-  const sizes = new Float32Array(particleCount);
-
-  // Golden color palette
-  const goldColors = [
-    { r: 1.0, g: 0.84, b: 0.0 },   // Gold
-    { r: 1.0, g: 0.65, b: 0.0 },   // Orange gold
-    { r: 1.0, g: 0.94, b: 0.0 },   // Bright yellow
-    { r: 0.85, g: 0.65, b: 0.13 }, // Goldenrod
-  ];
+  const originalPositions = new Float32Array(particleCount * 3);
+  const velocities = new Float32Array(particleCount * 3);
 
   for (let i = 0; i < particleCount; i++) {
-    // Spread particles in 3D space
-    positions[i * 3] = (Math.random() - 0.5) * 50;
-    positions[i * 3 + 1] = (Math.random() - 0.5) * 50;
-    positions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 15;
-
-    // Random gold color
-    const color = goldColors[Math.floor(Math.random() * goldColors.length)];
-    colors[i * 3] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
-
-    sizes[i] = Math.random() * 3 + 1;
+    const x = (Math.random() - 0.5) * 60;
+    const y = (Math.random() - 0.5) * 60;
+    const z = (Math.random() - 0.5) * 30 - 10;
+    
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+    
+    originalPositions[i * 3] = x;
+    originalPositions[i * 3 + 1] = y;
+    originalPositions[i * 3 + 2] = z;
+    
+    velocities[i * 3] = 0;
+    velocities[i * 3 + 1] = 0;
+    velocities[i * 3 + 2] = 0;
   }
 
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-  // Custom shader material for glowing particles
+  // Light ash color material
   const material = new THREE.PointsMaterial({
-    size: 0.15,
-    vertexColors: true,
+    size: 0.08,
+    color: 0xC0C0C0, // Light ash/silver color
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.6,
     sizeAttenuation: true,
     blending: THREE.AdditiveBlending,
   });
@@ -60,93 +59,67 @@
   const particles = new THREE.Points(geometry, material);
   scene.add(particles);
 
-  // Add floating geometric shapes
-  const shapes = [];
-  const shapeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xFFD700,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.3,
-  });
+  camera.position.z = 25;
 
-  // Create random geometric shapes
-  const geometries = [
-    new THREE.TetrahedronGeometry(0.5),
-    new THREE.OctahedronGeometry(0.4),
-    new THREE.IcosahedronGeometry(0.3),
-  ];
-
-  for (let i = 0; i < 15; i++) {
-    const geo = geometries[Math.floor(Math.random() * geometries.length)];
-    const mesh = new THREE.Mesh(geo, shapeMaterial.clone());
-    mesh.position.set(
-      (Math.random() - 0.5) * 40,
-      (Math.random() - 0.5) * 40,
-      (Math.random() - 0.5) * 20 - 10
-    );
-    mesh.rotation.set(
-      Math.random() * Math.PI,
-      Math.random() * Math.PI,
-      Math.random() * Math.PI
-    );
-    mesh.userData = {
-      rotSpeed: {
-        x: (Math.random() - 0.5) * 0.02,
-        y: (Math.random() - 0.5) * 0.02,
-        z: (Math.random() - 0.5) * 0.02,
-      },
-      floatSpeed: Math.random() * 0.5 + 0.5,
-      floatOffset: Math.random() * Math.PI * 2,
-    };
-    shapes.push(mesh);
-    scene.add(mesh);
-  }
-
-  // Add connecting lines between nearby particles
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: 0xFFD700,
-    transparent: true,
-    opacity: 0.1,
-  });
-
-  camera.position.z = 20;
-
-  // Mouse parallax
-  let mouseX = 0;
-  let mouseY = 0;
+  // Mouse tracking
   document.addEventListener('mousemove', (e) => {
-    mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
-    mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+    targetMouseX = (e.clientX / window.innerWidth - 0.5) * 30;
+    targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 30;
+  });
+
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+      targetMouseX = (e.touches[0].clientX / window.innerWidth - 0.5) * 30;
+      targetMouseY = -(e.touches[0].clientY / window.innerHeight - 0.5) * 30;
+    }
   });
 
   // Animation loop
   function animate() {
     requestAnimationFrame(animate);
 
-    // Rotate particle system
-    particles.rotation.y += 0.0005;
-    particles.rotation.x += 0.0002;
+    // Smooth mouse follow
+    mouseX += (targetMouseX - mouseX) * 0.05;
+    mouseY += (targetMouseY - mouseY) * 0.05;
 
-    // Update particle positions (floating effect)
+    // Update particle positions based on mouse
     const positions = geometry.attributes.position.array;
-    const time = Date.now() * 0.001;
+    const time = Date.now() * 0.0005;
+    
     for (let i = 0; i < particleCount; i++) {
-      positions[i * 3 + 1] += Math.sin(time + i * 0.1) * 0.002;
+      const i3 = i * 3;
+      
+      // Get original position
+      const ox = originalPositions[i3];
+      const oy = originalPositions[i3 + 1];
+      const oz = originalPositions[i3 + 2];
+      
+      // Calculate distance from mouse in 3D
+      const dx = ox - mouseX;
+      const dy = oy - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Particles are pushed away by mouse, with falloff
+      const influence = Math.max(0, 1 - dist / 15) * 3;
+      
+      // Add some floating motion
+      const floatX = Math.sin(time + i * 0.1) * 0.5;
+      const floatY = Math.cos(time + i * 0.15) * 0.5;
+      
+      // Apply displacement
+      positions[i3] = ox + (dx / dist) * influence + floatX;
+      positions[i3 + 1] = oy + (dy / dist) * influence + floatY;
+      positions[i3 + 2] = oz + Math.sin(time + i * 0.05) * 0.3;
+      
+      // Handle NaN from division by zero
+      if (isNaN(positions[i3])) positions[i3] = ox;
+      if (isNaN(positions[i3 + 1])) positions[i3 + 1] = oy;
     }
+    
     geometry.attributes.position.needsUpdate = true;
 
-    // Animate shapes
-    shapes.forEach((shape, i) => {
-      shape.rotation.x += shape.userData.rotSpeed.x;
-      shape.rotation.y += shape.userData.rotSpeed.y;
-      shape.rotation.z += shape.userData.rotSpeed.z;
-      shape.position.y += Math.sin(time * shape.userData.floatSpeed + shape.userData.floatOffset) * 0.005;
-    });
-
-    // Camera follows mouse slightly
-    camera.position.x += (mouseX * 2 - camera.position.x) * 0.02;
-    camera.position.y += (-mouseY * 2 - camera.position.y) * 0.02;
-    camera.lookAt(scene.position);
+    // Slow particle system rotation
+    particles.rotation.z += 0.0002;
 
     renderer.render(scene, camera);
   }

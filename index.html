@@ -23,58 +23,6 @@
   <!-- Three.js Canvas -->
   <canvas id="three-canvas"></canvas>
 
-  <!-- Dragon SVG that follows cursor -->
-  <svg id="dragon" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-    <!-- Dragon body -->
-    <g fill="#FFD700" stroke="#FFA500" stroke-width="1">
-      <!-- Main body -->
-      <ellipse cx="100" cy="110" rx="35" ry="25"/>
-      <!-- Neck -->
-      <path d="M80 95 Q60 70 70 50 Q75 40 85 45 Q95 50 90 65 L85 90"/>
-      <!-- Head -->
-      <ellipse cx="75" cy="40" rx="18" ry="14"/>
-      <!-- Snout -->
-      <path d="M58 40 Q45 38 40 42 Q45 48 58 45"/>
-      <!-- Eye -->
-      <circle cx="70" cy="36" r="4" fill="#000"/>
-      <circle cx="69" cy="35" r="1.5" fill="#FFF"/>
-      <!-- Horns -->
-      <path d="M78 28 Q82 15 75 10" fill="none" stroke="#FFD700" stroke-width="3"/>
-      <path d="M85 30 Q92 18 88 12" fill="none" stroke="#FFD700" stroke-width="3"/>
-      <!-- Spikes on back -->
-      <path d="M90 90 L95 75 L100 92 L108 78 L112 95 L120 82 L125 100" fill="none" stroke="#FFD700" stroke-width="2"/>
-      <!-- Wings -->
-      <path d="M75 100 Q40 60 30 80 Q35 95 50 100 Q45 85 55 90 Q50 100 65 105" fill="#FFD700" opacity="0.8"/>
-      <path d="M125 100 Q160 60 170 80 Q165 95 150 100 Q155 85 145 90 Q150 100 135 105" fill="#FFD700" opacity="0.8"/>
-      <!-- Wing details -->
-      <path d="M45 85 L60 100" stroke="#FFA500" stroke-width="1" fill="none"/>
-      <path d="M50 90 L62 102" stroke="#FFA500" stroke-width="1" fill="none"/>
-      <path d="M155 85 L140 100" stroke="#FFA500" stroke-width="1" fill="none"/>
-      <path d="M150 90 L138 102" stroke="#FFA500" stroke-width="1" fill="none"/>
-      <!-- Legs -->
-      <path d="M80 130 Q75 145 70 155 Q68 160 75 160 L82 155 Q85 145 85 130"/>
-      <path d="M120 130 Q125 145 130 155 Q132 160 125 160 L118 155 Q115 145 115 130"/>
-      <!-- Tail -->
-      <path d="M135 115 Q155 120 170 110 Q185 100 190 85 Q188 80 182 85 Q175 95 165 100 Q150 108 135 108" fill="#FFD700"/>
-      <!-- Tail spikes -->
-      <path d="M175 95 L180 88 M165 100 L168 92 M155 105 L156 97" stroke="#FFA500" stroke-width="2" fill="none"/>
-      <!-- Fire breath particles -->
-      <circle cx="35" cy="42" r="3" fill="#FF4500" opacity="0.8" class="fire"/>
-      <circle cx="28" cy="40" r="4" fill="#FF6347" opacity="0.6" class="fire"/>
-      <circle cx="22" cy="43" r="3" fill="#FF4500" opacity="0.4" class="fire"/>
-    </g>
-    <!-- Glow filter -->
-    <defs>
-      <filter id="glow">
-        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-        <feMerge>
-          <feMergeNode in="coloredBlur"/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
-      </filter>
-    </defs>
-  </svg>
-
   <main class="container">
     <!-- Header -->
     <header class="header">
@@ -156,8 +104,8 @@
   <script src="src/sources.js"></script>
   <script src="src/kotatsu.js"></script>
   <script src="src/mihon.js"></script>
-  <script src="src/dragon.js"></script>
   <script src="src/three-bg.js"></script>
+  <script src="src/snake.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
