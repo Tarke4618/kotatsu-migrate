@@ -141,6 +141,9 @@ async function createKotatsuBackup(data) {
   const categoryByOrder = {};  // order -> kotatsu category_id
   const categoryById = {};     // id -> kotatsu category_id
   
+  // Current time in seconds for categories (Kotatsu uses seconds, not milliseconds)
+  const catNowSeconds = Math.floor(Date.now() / 1000);
+  
   const categories = data.categories.map((c, idx) => {
     // Use Mihon's original category ID - Kotatsu may require matching IDs
     const mihonOrder = c.order != null ? Number(c.order) : idx;
@@ -151,10 +154,10 @@ async function createKotatsuBackup(data) {
     
     const cat = {
       category_id: kotatsuCatId,
-      created_at: Date.now(),
+      created_at: catNowSeconds,
       sort_key: mihonOrder,
       title: c.name || `Category ${idx + 1}`,
-      order: String(mihonOrder),
+      order: mihonOrder,  // Number, not string
       track: true,
       show_in_lib: true,
       deleted_at: 0,
@@ -172,10 +175,10 @@ async function createKotatsuBackup(data) {
   if (categories.length === 0) {
     categories.push({
       category_id: 1,
-      created_at: Date.now(),
+      created_at: catNowSeconds,
       sort_key: 0,
       title: 'Default',
-      order: '0',
+      order: 0,  // Number, not string
       track: true,
       show_in_lib: true,
       deleted_at: 0,
