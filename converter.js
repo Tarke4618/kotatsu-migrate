@@ -168,7 +168,9 @@ async function convertKotatsuToTachiyomi(file) {
                 thumbnailUrl: String(kManga.coverUrl || kManga.thumbnailUrl || ""),
                 dateAdded: Number(kManga.dateAdded || Date.now()),
                 categories: mangaCats, // Linked to category orders
-                backupHistory: mangaHistory
+                history: mangaHistory, // Correct field name for Proto Schema
+                favorite: true, // CRITICAL: Must be explicitly favored
+                chapters: [] // Correct field name
             };
         });
         
