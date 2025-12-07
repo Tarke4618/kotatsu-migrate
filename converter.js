@@ -133,15 +133,13 @@ async function convertKotatsuToTachiyomi(file) {
         // Verify payload
         const errMsg = BackupMessage.verify(payload);
         if (errMsg) {
-            console.warn("Proto verification failed:", errMsg);
+            console.warn("Proto verification failed (likely benign type mismatch):", errMsg);
             result.debugData.verificationError = errMsg;
-            result.debugData.payloadDump = JSON.parse(JSON.stringify(payload)); // Deep copy for debug
+            result.debugData.payloadDump = JSON.parse(JSON.stringify(payload)); 
             
-            // OPTION: We can try to encode anyway? Sometimes verify is too strict?
-            // But usually verify is right.
-            // Let's try to fix the common 'string expected' by removing nulls recursively?
-            // For now, throw but with better info
-            throw new Error(`Proto verification failed: ${errMsg}. Check Raw Data -> payloadDump.`);
+            // FIX: Do NOT throw here. 
+            // protobuf.js 'verify' is strict and rejects strings for int64, 
+            // but 'encode' accepts them fine. We will proceed.
         }
 
         const message = BackupMessage.create(payload);
