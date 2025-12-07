@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Modal Logic
     const modal = document.getElementById('debug-modal');
-    const closeBtn = document.getElementsByClassName('close-modal')[0];
+    const closeBtn = document.getElementsByClassName('close-btn')[0];
     const content = document.getElementById('debug-content');
 
     function showModal(data) {
@@ -102,7 +102,11 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.style.display = 'block';
     }
 
-    closeBtn.onclick = () => modal.style.display = 'none';
+    if (closeBtn) {
+        closeBtn.onclick = () => modal.style.display = 'none';
+    } else {
+        console.warn("Close button not found");
+    }
 
     window.onclick = (event) => {
         if (event.target === modal) {
