@@ -76,6 +76,26 @@ async function convertKotatsuToTachiyomi(file) {
             catch (e) { console.warn("Bad categories JSON", e); }
         }
 
+        // 2a. Parse History if available
+        let historyLookup = {}; // manga_id -> [history items]
+        if (filesFound.history) {
+            try {
+                const historyData = JSON.parse(filesFound.history); // Array of { manga_id, ... }
+                if (Array.isArray(historyData)) {
+                    historyData.forEach(h => {
+                         if (!historyLookup[h.manga_id]) historyLookup[h.manga_id] = [];
+                         historyLookup[h.manga_id].push({
+                             url: String(h.url || ""), // Chapter URL
+                             lastRead: Number(h.updated_at || Date.now()), // best guess for last read time
+                             readDuration: 0 // default
+                         });
+                    });
+                }
+            } catch (e) {
+                console.warn("Bad history JSON", e);
+            }
+        }
+
         // 3. Map to Tachiyomi
         result.debugData.kotatsuFavourites = kotatsuFavs;
         result.debugData.kotatsuCategories = kotatsuCategories;
@@ -119,9 +139,25 @@ async function convertKotatsuToTachiyomi(file) {
                 // Some versions might have array?
             }
 
+            // Resolve History
+            let mangaHistory = [];
+            if (kManga.id && historyLookup[kManga.id]) {
+                mangaHistory = historyLookup[kManga.id];
+            }
+
+            // Sanitize URL (Tachi expects relative path often, e.g. /manga/123)
+            // Kotatsu gives full URL usually.
+            let cleanUrl = String(kManga.url || "");
+            try {
+                if (cleanUrl.startsWith("http")) {
+                    const u = new URL(cleanUrl);
+                    cleanUrl = u.pathname + u.search; // Keep query params if any
+                }
+            } catch (e) { /* keep original if parse fails */ }
+
             return {
                 source: String(window.findSourceId ? window.findSourceId(kManga.source) : "0"), // Smart Source Mapping
-                url: String(kManga.url || ""), 
+                url: cleanUrl, 
                 title: String(kManga.title || "Unknown Title"),
 // ... rest of mapping
                 artist: String(kManga.artist || ""),
@@ -132,6 +168,7 @@ async function convertKotatsuToTachiyomi(file) {
                 thumbnailUrl: String(kManga.coverUrl || kManga.thumbnailUrl || ""),
                 dateAdded: Number(kManga.dateAdded || Date.now()),
                 categories: mangaCats, // Linked to category orders
+                backupHistory: mangaHistory
             };
         });
         
