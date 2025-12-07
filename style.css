@@ -90,13 +90,13 @@ body {
 }
 
 /* Even smaller on mobile */
-@media (max-width: 500px) {
+@media (max-width: 600px) {
   .toggle-ui-btn {
-    width: 8px;
-    height: 8px;
-    top: 8px;
-    right: 8px;
-    border-width: 1px;
+    width: 6px !important;
+    height: 6px !important;
+    top: 6px !important;
+    right: 6px !important;
+    border-width: 1px !important;
   }
 }
 
