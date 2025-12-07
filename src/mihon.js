@@ -114,15 +114,21 @@ async function createMihonBackup(data) {
   // Build category lookup for ID -> order mapping
   const categoryLookup = {};
   const backupCategories = data.categories.map((c, idx) => {
-    const catId = c.id || idx + 1;
-    categoryLookup[catId] = idx;
+    // Kotatsu categories have 'id' and 'title' fields
+    const catId = c.id || c.category_id || idx + 1;
+    const catName = c.title || c.name || `Category ${idx + 1}`;
+    categoryLookup[catId] = idx; // Map Kotatsu ID to Mihon order/index
     return {
-      name: String(c.name || c.title || `Category ${idx + 1}`),
+      name: String(catName),
       order: Number(idx),
-      id: Number(catId),
+      id: Number(idx), // Mihon uses order as id reference
       flags: 0,
     };
   });
+  
+  // DEBUG: Log category lookup
+  console.log('[mihon] Category lookup table:', categoryLookup);
+  console.log('[mihon] Backup categories:', backupCategories);
 
   // Build history lookup (manga_id -> history entries)
   const historyLookup = {};
@@ -151,9 +157,16 @@ async function createMihonBackup(data) {
     }
     
     // Get categories for this manga
+    // Kotatsu stores category_id at the WRAPPER level (rawManga), not inside manga
     const mangaCategories = [];
-    const catId = rawManga.category_id ?? m.category_id;
+    const catId = rawManga.category_id;
+    
+    if (idx < 3) {
+      console.log(`[mihon] Manga ${idx} (${m.title}): category_id=${catId}, lookup result=${categoryLookup[catId]}`);
+    }
+    
     if (catId !== undefined && categoryLookup[catId] !== undefined) {
+      // Mihon categories field expects the ORDER/INDEX, not the original ID
       mangaCategories.push(Number(categoryLookup[catId]));
     }
 
