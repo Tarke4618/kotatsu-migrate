@@ -381,7 +381,7 @@ async function createKotatsuBackup(data) {
   // Only include files that are needed for restore - empty files may cause errors
   zip.file('favourites', JSON.stringify(favourites));
   zip.file('categories', JSON.stringify(categories));
-  zip.file('history', JSON.stringify(history));
+  // zip.file('history', JSON.stringify(history));  // Temporarily disabled to test if causing issues
   zip.file('bookmarks', JSON.stringify([]));
   zip.file('sources', JSON.stringify(sources));
   zip.file('index', JSON.stringify({
