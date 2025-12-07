@@ -1,0 +1,231 @@
+// src/mihon.js - Mihon/Tachiyomi Backup Parser & Builder
+// Format: GZipped Protobuf binary (.tachibk)
+
+/**
+ * Parse a Mihon backup file (.tachibk)
+ * @param {File} file - The uploaded .tachibk file
+ * @returns {Promise<Object>} Normalized backup data
+ */
+async function parseMihonBackup(file) {
+  const result = {
+    success: false,
+    data: {
+      manga: [],
+      categories: [],
+      sources: [],
+    },
+    debug: {
+      isGzip: false,
+      protoSize: 0,
+      errors: [],
+    }
+  };
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    let bytes = new Uint8Array(arrayBuffer);
+
+    // Check if gzipped (magic bytes: 1f 8b)
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      result.debug.isGzip = true;
+      bytes = pako.ungzip(bytes);
+    }
+    result.debug.protoSize = bytes.length;
+
+    // Parse with protobuf.js
+    if (typeof protobuf === 'undefined' || typeof window.MIHON_PROTO_SCHEMA === 'undefined') {
+      throw new Error('Dependencies missing: protobuf.js or schema');
+    }
+
+    const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
+    const BackupMessage = root.lookupType('Backup');
+    const decoded = BackupMessage.decode(bytes);
+    const backup = BackupMessage.toObject(decoded, {
+      longs: String,
+      enums: String,
+      defaults: true,
+    });
+
+    // Extract manga
+    result.data.manga = (backup.backupManga || []).map(m => ({
+      source: m.source,
+      url: m.url,
+      title: m.title || '',
+      artist: m.artist || '',
+      author: m.author || '',
+      description: m.description || '',
+      genre: m.genre || [],
+      status: m.status || 0,
+      thumbnailUrl: m.thumbnailUrl || '',
+      dateAdded: m.dateAdded || 0,
+      favorite: m.favorite !== false,
+      categories: m.categories || [],
+      chapters: (m.chapters || []).map(ch => ({
+        url: ch.url,
+        name: ch.name,
+        read: ch.read || false,
+        bookmark: ch.bookmark || false,
+        lastPageRead: ch.lastPageRead || 0,
+        chapterNumber: ch.chapterNumber || 0,
+      })),
+      history: (m.history || []).map(h => ({
+        url: h.url,
+        lastRead: h.lastRead,
+        readDuration: h.readDuration || 0,
+      })),
+    }));
+
+    // Extract categories
+    result.data.categories = (backup.backupCategories || []).map(c => ({
+      name: c.name,
+      order: c.order || 0,
+      id: c.id || 0,
+      flags: c.flags || 0,
+    }));
+
+    // Extract sources
+    result.data.sources = (backup.backupSources || []).map(s => ({
+      name: s.name || '',
+      sourceId: s.sourceId,
+    }));
+
+    result.success = result.data.manga.length > 0;
+
+  } catch (e) {
+    result.debug.errors.push(`Parse failed: ${e.message}`);
+  }
+
+  return result;
+}
+
+/**
+ * Create a Mihon backup file from normalized data
+ * @param {Object} data - Normalized backup data (from Kotatsu parser)
+ * @returns {Promise<Blob>} The .tachibk file as a Blob
+ */
+async function createMihonBackup(data) {
+  if (typeof protobuf === 'undefined' || typeof window.MIHON_PROTO_SCHEMA === 'undefined') {
+    throw new Error('Dependencies missing');
+  }
+
+  const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
+  const BackupMessage = root.lookupType('Backup');
+
+  // Build category lookup for ID -> order mapping
+  const categoryLookup = {};
+  const backupCategories = data.categories.map((c, idx) => {
+    const catId = c.id || idx + 1;
+    categoryLookup[catId] = idx;
+    return {
+      name: String(c.name || c.title || `Category ${idx + 1}`),
+      order: Number(idx),
+      id: Number(catId),
+      flags: 0,
+    };
+  });
+
+  // Build history lookup (manga_id -> history entries)
+  const historyLookup = {};
+  if (data.history && Array.isArray(data.history)) {
+    data.history.forEach(h => {
+      const mangaId = h.manga_id;
+      if (!historyLookup[mangaId]) historyLookup[mangaId] = [];
+      historyLookup[mangaId].push({
+        url: String(h.url || h.chapter_url || ''),
+        lastRead: Number(h.updated_at || h.created_at || Date.now()),
+        readDuration: 0,
+      });
+    });
+  }
+
+  // Build manga list
+  const backupManga = data.manga.map((m, idx) => {
+    const mangaId = m.id || idx + 1;
+    
+    // Get categories for this manga
+    const mangaCategories = [];
+    if (m.category_id !== undefined && categoryLookup[m.category_id] !== undefined) {
+      mangaCategories.push(Number(categoryLookup[m.category_id]));
+    }
+
+    // Get history for this manga
+    const mangaHistory = historyLookup[mangaId] || [];
+
+    // Sanitize URL (strip domain for relative path)
+    let cleanUrl = String(m.url || '');
+    try {
+      if (cleanUrl.startsWith('http')) {
+        const u = new URL(cleanUrl);
+        cleanUrl = u.pathname + u.search;
+      }
+    } catch (e) { /* keep original */ }
+
+    // Get source ID
+    const sourceId = window.findMihonSourceId 
+      ? window.findMihonSourceId(m.source) 
+      : '0';
+
+    return {
+      source: sourceId,
+      url: cleanUrl,
+      title: String(m.title || 'Unknown'),
+      artist: String(m.artist || m.author || ''),
+      author: String(m.author || ''),
+      description: String(m.description || ''),
+      genre: Array.isArray(m.genre) ? m.genre.map(String) : 
+             (m.tags ? m.tags.map(t => t.title || String(t)) : []),
+      status: mapKotatsuStatusToMihon(m.state || m.status),
+      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || ''),
+      dateAdded: Number(m.created_at || m.dateAdded || Date.now()),
+      favorite: true, // CRITICAL: Must be true for library import
+      categories: mangaCategories,
+      chapters: [], // Kotatsu doesn't export chapter lists
+      history: mangaHistory,
+    };
+  });
+
+  // Build sources list
+  const sourceIds = new Set();
+  backupManga.forEach(m => sourceIds.add(m.source));
+  const backupSources = Array.from(sourceIds).map(id => ({
+    sourceId: id,
+    name: window.findKotatsuSourceName ? window.findKotatsuSourceName(id) : 'Unknown',
+  }));
+
+  const payload = {
+    backupManga,
+    backupCategories,
+    backupSources,
+  };
+
+  // Verify (non-blocking)
+  const errMsg = BackupMessage.verify(payload);
+  if (errMsg) {
+    console.warn('[mihon] Proto verification warning:', errMsg);
+  }
+
+  // Encode and compress
+  const message = BackupMessage.create(payload);
+  const buffer = BackupMessage.encode(message).finish();
+  const gzipped = pako.gzip(buffer);
+
+  return new Blob([gzipped], { type: 'application/octet-stream' });
+}
+
+function mapKotatsuStatusToMihon(status) {
+  // Kotatsu: ONGOING, FINISHED, ABANDONED, PAUSED, UPCOMING
+  // Mihon: 0=Unknown, 1=Ongoing, 2=Completed, 3=Licensed, 4=Publishing, 5=Cancelled, 6=Hiatus
+  if (!status) return 0;
+  const s = String(status).toUpperCase();
+  if (s.includes('ONGOING')) return 1;
+  if (s.includes('FINISHED') || s.includes('COMPLETED')) return 2;
+  if (s.includes('ABANDONED') || s.includes('CANCELLED')) return 5;
+  if (s.includes('PAUSED') || s.includes('HIATUS')) return 6;
+  return 0;
+}
+
+// Export
+if (typeof window !== 'undefined') {
+  window.parseMihonBackup = parseMihonBackup;
+  window.createMihonBackup = createMihonBackup;
+}
