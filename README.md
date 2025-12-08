@@ -6,19 +6,22 @@ A web-based tool for converting manga library backups between Kotatsu (`.bk.zip`
 
 ## Features
 
-- **Bidirectional Conversion**: Kotatsu → Mihon and Mihon → Kotatsu
+- **Bidirectional Conversion**: Kotatsu ↔ Mihon
+- **Auto-Detection**: Simply drop your file, and the tool detects the format
 - **Preserves Data**: Manga, categories, favorites, and reading history
-- **Smart Source Mapping**: 100+ manga sources with fuzzy matching
+- **Comprehensive Source Mapping**: **3300+** sources supported (MangaDex, Bato, Webtoons, etc.)
+- **Dynamic ID Generation**: Unknown/Kotatsu-only sources are automatically handled with deterministic ID generation
+- **Smart Category Handling**:
+  - Mihon → Kotatsu: Primary category maps to folder, extra categories become **Tags** (e.g., `Category: Fantasy`)
 - **No Installation**: Works entirely in your browser
 - **Privacy First**: All processing happens locally - no data uploaded
 
 ## Usage
 
-1. **Open the tool**: Visit the hosted page or open `index.html` locally
-2. **Select direction**: Click "Kotatsu → Mihon" or "Mihon → Kotatsu"
-3. **Drop your backup**: Drag and drop your `.bk.zip` or `.tachibk` file
-4. **Download result**: Click "Download Backup" when conversion completes
-5. **Import**: Load the converted backup in your target app
+1. **Open the tool**: open `index.html` locally
+2. **Drop your backup**: Drag and drop your `.bk.zip` or `.tachibk` file
+3. **Download result**: Click "Download" when conversion completes
+4. **Import**: Load the converted backup in your target app
 
 ## Supported Data
 
@@ -34,40 +37,13 @@ A web-based tool for converting manga library backups between Kotatsu (`.bk.zip`
 
 ## Supported Sources
 
-The tool includes mappings for **200+ unique manga sources** including:
+The tool is powered by a massive database of **3300+ unique manga sources** derived from the official extension repositories.
 
-### Major Aggregators
+- **Major Aggregators**: MangaDex, MangaPlus, Webtoons, Bato.to, MangaNato, MangaKakalot, Comick
+- **Regional**: Extensive support for Chinese, Korean, Japanese, Spanish, Portuguese, French, Russian, Indonesian, Vietnamese, Turkish, Arabic, and Thai sources.
+- **Adult**: Full support for major hentai sources.
 
-- MangaDex, MangaPlus, Webtoons, Batoto
-- MangaNato, MangaKakalot, MangaPark, MangaSee
-- Comick.fun, MangaFire, MangaPill
-
-### Scanlator Groups
-
-- Asura Scans, Reaper Scans, Flame Scans
-- Luminous Scans, Void Scans, Reset Scans
-
-### Regional Sites
-
-- **Chinese**: CopyManga, DMZJ, MangaBZ
-- **Korean**: NewToki, TopToon, RawKuma
-- **Japanese**: SenManga, RawLH, Weloma
-- **Spanish**: TuMangaOnline, LeerManga, InManga
-- **Portuguese**: MangaLivre, MangaHosted, UnionMangas
-- **French**: JapScan, ScanVF, SushiScan
-- **Russian**: ReManga, MangaLib, Desu.me
-- **Indonesian**: Komiku, KomikCast, Kiryuu
-- **Vietnamese**: BlogTruyen, NetTruyen, TruyenQQ
-- **Turkish**: MangaDenizi, TempestScans
-- **Arabic**: GManga, TeamX, MangaAE
-- **Thai**: NekoPost, Manga168
-
-### Adult Sites
-
-- NHentai, E-Hentai, HentaiFox, HentaiHand
-- 3Hentai, AsmHentai, Hitomi, Pururin
-
-Unknown sources are mapped to "Local Source" (ID: 0).
+**Fallback**: If a source is not in the database (e.g., a custom Kotatsu parser), the tool **dynamically generates a valid ID** compatible with Mihon's architecture, ensuring no data is ever lost.
 
 ## Technical Details
 
@@ -80,34 +56,22 @@ Unknown sources are mapped to "Local Source" (ID: 0).
 
 ```
 kotatsu-migrate/
-├── index.html      # Main UI
-├── style.css       # Styling
-├── app.js          # Application logic
+├── index.html       # Main UI
+├── style.css        # Styling
+├── app.js           # Application logic
 └── src/
-    ├── schema.js   # Mihon Protobuf schema
-    ├── sources.js  # Source ID mappings
-    ├── kotatsu.js  # Kotatsu parser/builder
-    └── mihon.js    # Mihon parser/builder
+    ├── schema.js    # Mihon Protobuf schema
+    ├── sources.js   # 3300+ Source ID mappings
+    ├── murmurhash.js# MurmurHash3 implementation for dynamic IDs
+    ├── mapping.js   # Bidirectional status code mapping
+    ├── kotatsu.js   # Kotatsu parser/builder
+    └── mihon.js     # Mihon parser/builder
 ```
-
-### Dependencies (CDN)
-
-- [JSZip](https://stuk.github.io/jszip/) - ZIP handling
-- [Pako](https://github.com/nodeca/pako) - GZip compression
-- [Protobuf.js](https://github.com/protobufjs/protobuf.js) - Protocol Buffer parsing
 
 ## Known Limitations
 
-- Mihon → Kotatsu may fail on newer Mihon backups with complex preference formats
-- Chapter read progress is preserved but chapter URLs may not match between sources
-- Some source mappings may be incorrect; please report issues
-
-## Contributing
-
-1. Fork the repository
-2. Add source mappings to `src/sources.js`
-3. Test with real backups
-4. Submit a pull request
+- Chapter read progress is preserved but chapter URLs may not match if sources use different URL schemes.
+- Kotatsu only supports one category per manga. When converting from Mihon (multi-category), the first category is used as the folder, and others are added as Tags.
 
 ## License
 
@@ -115,4 +79,4 @@ MIT License - Free to use and modify.
 
 ---
 
-**Built for manga readers** • [Report Issues](https://github.com/Tarke4618/kotatsu-migrate/issues)
+**Built for manga readers**
