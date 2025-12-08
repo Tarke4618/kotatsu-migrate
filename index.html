@@ -32,7 +32,7 @@
     <header class="header">
       <h1 class="logo">
         <span class="logo-k">KOTATSU</span>
-        <span class="logo-arrow">→</span>
+        <span class="logo-arrow">↔</span>
         <span class="logo-m">MIHON</span>
       </h1>
       <p class="tagline">QUANTUM BACKUP CONVERTER</p>
@@ -51,9 +51,9 @@
             </svg>
           </div>
           <h3 class="drop-zone-title">DROP BACKUP FILE</h3>
-          <p class="drop-zone-text">Select or drop <code>.bk.zip</code></p>
+          <p class="drop-zone-text">Support: <code>.tachibk</code> ↔ <code>.bk.zip</code></p>
         </div>
-        <input type="file" id="input-kotatsu" accept=".zip,.bk,.bk.zip" hidden>
+        <input type="file" id="input-kotatsu" accept=".zip,.bk,.bk.zip,.tachibk,.proto.gz" hidden>
       </div>
     </section>
 
@@ -105,7 +105,9 @@
 
   <!-- Scripts -->
   <script src="src/schema.js"></script>
+  <script src="src/murmurhash.js"></script>
   <script src="src/sources.js"></script>
+  <script src="src/mapping.js"></script>
   <script src="src/kotatsu.js"></script>
   <script src="src/mihon.js"></script>
   <script src="src/three-bg.js"></script>

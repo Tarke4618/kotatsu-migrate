@@ -108,14 +108,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ===== File Processing =====
   async function handleFile(file) {
-    setStatus('⏳', 'Parsing Kotatsu backup...');
     hideStats();
     hideActions();
     debugData = {};
+    parsedData = null;
+    convertedBlob = null;
 
+    const isMihon = file.name.endsWith('.tachibk') || file.name.endsWith('.proto.gz');
+    const targetFormat = isMihon ? 'Kotatsu' : 'Mihon';
+    
+    setStatus('⏳', `Parsing ${isMihon ? 'Mihon' : 'Kotatsu'} backup...`);
+    
     try {
-      // Parse Kotatsu backup
-      const parseResult = await window.parseKotatsuBackup(file);
+      let parseResult;
+      
+      if (isMihon) {
+        parseResult = await window.parseMihonBackup(file);
+      } else {
+        parseResult = await window.parseKotatsuBackup(file);
+      }
+      
       debugData.parseResult = parseResult;
 
       if (!parseResult.success) {
@@ -132,9 +144,19 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('✅', `Parsed ${mangaCount} manga`, 'success');
       showStats(mangaCount, categoryCount, historyCount);
 
-      // Convert to Mihon
-      setStatus('⏳', 'Converting to Mihon format...');
-      convertedBlob = await window.createMihonBackup(parsedData);
+      // Convert
+      setStatus('⏳', `Converting to ${targetFormat} format...`);
+      
+      if (isMihon) {
+        // Convert TO Kotatsu
+        convertedBlob = await window.createKotatsuBackup(parsedData);
+        debugData.outputExtension = 'bk.zip';
+      } else {
+        // Convert TO Mihon
+        convertedBlob = await window.createMihonBackup(parsedData);
+        debugData.outputExtension = 'tachibk';
+      }
+      
       debugData.convertedSize = convertedBlob.size;
 
       setStatus('✅', 'Conversion complete! Ready to download.', 'success');
@@ -152,7 +174,10 @@ document.addEventListener('DOMContentLoaded', () => {
   btnDownload.addEventListener('click', () => {
     if (!convertedBlob) return;
 
-    const filename = `kotatsu_to_mihon_${Date.now()}.tachibk`;
+    const ext = debugData.outputExtension || 'backup';
+    const prefix = ext === 'tachibk' ? 'kotatsu_to_mihon' : 'mihon_to_kotatsu';
+    const filename = `${prefix}_${Date.now()}.${ext}`;
+    
     const url = URL.createObjectURL(convertedBlob);
     const a = document.createElement('a');
     a.href = url;

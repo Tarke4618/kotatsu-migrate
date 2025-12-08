@@ -275,7 +275,7 @@ async function createMihonBackup(data) {
       description: String(m.description || ''),
       genre: Array.isArray(m.genre) ? m.genre.map(String) : 
              Array.isArray(m.tags) ? m.tags.map(t => t.title || t.name || String(t)) : [],
-      status: mapKotatsuStatusToMihon(m.state || m.status),
+      status: window.mapKotatsuStatusToMihon ? window.mapKotatsuStatusToMihon(m.state || m.status) : 0,
       thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || ''),
       dateAdded: protobuf.util.Long 
         ? protobuf.util.Long.fromNumber(Number(rawManga.created_at || m.dateAdded || Date.now()), true)
@@ -328,17 +328,7 @@ async function createMihonBackup(data) {
   return new Blob([gzipped], { type: 'application/octet-stream' });
 }
 
-function mapKotatsuStatusToMihon(status) {
-  // Kotatsu: ONGOING, FINISHED, ABANDONED, PAUSED, UPCOMING
-  // Mihon: 0=Unknown, 1=Ongoing, 2=Completed, 3=Licensed, 4=Publishing, 5=Cancelled, 6=Hiatus
-  if (!status) return 0;
-  const s = String(status).toUpperCase();
-  if (s.includes('ONGOING')) return 1;
-  if (s.includes('FINISHED') || s.includes('COMPLETED')) return 2;
-  if (s.includes('ABANDONED') || s.includes('CANCELLED')) return 5;
-  if (s.includes('PAUSED') || s.includes('HIATUS')) return 6;
-  return 0;
-}
+
 
 // Export
 if (typeof window !== 'undefined') {
