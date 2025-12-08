@@ -481,7 +481,7 @@ body {
   }
 }
 
-/* ===== Subtle Scanline Effect ===== */
+/* ===== Subtle Scan Line Effect ===== */
 body::after {
   content: '';
   position: fixed;

@@ -1,4 +1,5 @@
 // src/kotatsu.js - Kotatsu Backup Parser
+// cspell:ignore favourites
 // Format: ZIP archive containing JSON files
 
 /**
@@ -28,7 +29,7 @@ async function parseKotatsuBackup(file) {
 
     // Find and parse JSON files (recursive search)
     const jsonFiles = {
-      favourites: null,
+      favorites: null,
       categories: null,
       history: null,
       bookmarks: null,
@@ -41,7 +42,7 @@ async function parseKotatsuBackup(file) {
       const name = path.split('/').pop().toLowerCase();
       
       if (name === 'favourites.json' || name === 'favourites' || name === 'manga.json') {
-        jsonFiles.favourites = await entry.async('string');
+        jsonFiles.favorites = await entry.async('string');
       }
       if (name === 'categories.json' || name === 'categories') {
         jsonFiles.categories = await entry.async('string');
@@ -54,13 +55,13 @@ async function parseKotatsuBackup(file) {
       }
     }
 
-    // Parse favourites (manga list)
-    if (jsonFiles.favourites) {
+    // Parse favorites (manga list)
+    if (jsonFiles.favorites) {
       try {
-        const data = JSON.parse(jsonFiles.favourites);
+        const data = JSON.parse(jsonFiles.favorites);
         result.data.manga = Array.isArray(data) ? data : [];
       } catch (e) {
-        result.debug.errors.push(`Failed to parse favourites: ${e.message}`);
+        result.debug.errors.push(`Failed to parse favorites: ${e.message}`);
       }
     }
 
