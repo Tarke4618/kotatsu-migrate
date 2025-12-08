@@ -45,7 +45,7 @@
   // Light ash color material - DOUBLED SIZE AGAIN
   const material = new THREE.PointsMaterial({
     size: 0.4,
-    color: 0xAAAAAA, // Light ash/gray color
+    color: 0xD4AF37, // Metallic Gold
     transparent: true,
     opacity: 0.5,
     sizeAttenuation: true,
