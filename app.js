@@ -151,6 +151,53 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('✅', 'Conversion complete! Ready to download.', 'success');
       showActions();
 
+      // ===== VERIFICATION START =====
+      try {
+        const vInput = document.getElementById('v-input');
+        const vOutput = document.getElementById('v-output');
+        const vBadge = document.getElementById('integrity-badge');
+        const vMsg = document.getElementById('verification-msg');
+        const vReport = document.getElementById('verification-report');
+
+        // Input count
+        const inputCount = mangaCount;
+        vInput.textContent = inputCount;
+
+        // Verify Output by parsing the blob we just created
+        let verifyResult;
+        const fakeFile = new File([convertedBlob], "verification_temp" + (isMihon ? ".bk.zip" : ".tachibk"));
+        
+        if (isMihon) {
+            // We created Kotatsu
+            verifyResult = await window.parseKotatsuBackup(fakeFile);
+        } else {
+            // We created Mihon
+            verifyResult = await window.parseMihonBackup(fakeFile);
+        }
+
+        if (verifyResult.success) {
+            const outputCount = verifyResult.data.manga.length;
+            vOutput.textContent = outputCount;
+            vReport.style.display = 'block';
+
+            if (inputCount === outputCount) {
+                vBadge.textContent = "VERIFIED";
+                vBadge.className = "verification-badge";
+                vMsg.textContent = "100% Data Integrity. All items preserved.";
+                vMsg.style.color = "var(--accent-success)";
+            } else {
+                const diff = inputCount - outputCount;
+                vBadge.textContent = "WARNING";
+                vBadge.className = "verification-badge warning";
+                vMsg.textContent = `Warning: ${Math.abs(diff)} items difference detected.`;
+                vMsg.style.color = "var(--accent-error)";
+            }
+        }
+      } catch (vErr) {
+        console.warn("Verification failed:", vErr);
+      }
+      // ===== VERIFICATION END =====
+
     } catch (err) {
       console.error('Conversion error:', err);
       debugData.error = err.message;

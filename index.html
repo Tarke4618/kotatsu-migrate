@@ -79,6 +79,26 @@
         </div>
       </div>
 
+      <!-- Verification Report -->
+      <div class="verification-card" id="verification-report" style="display: none;">
+        <div class="verification-header">
+          <span class="verification-title">DATA INTEGRITY CHECK</span>
+          <span class="verification-badge" id="integrity-badge">VERIFIED</span>
+        </div>
+        <div class="verification-grid">
+          <div class="v-item">
+            <span class="v-label">INPUT</span>
+            <span class="v-value" id="v-input">34</span>
+          </div>
+          <div class="v-arrow">→</div>
+          <div class="v-item">
+            <span class="v-label">OUTPUT</span>
+            <span class="v-value" id="v-output">34</span>
+          </div>
+        </div>
+        <div class="verification-msg" id="verification-msg">All items preserved.</div>
+      </div>
+
       <!-- Actions -->
       <div class="actions" id="actions" style="display: none;">
         <button class="btn btn-primary" id="btn-download">
