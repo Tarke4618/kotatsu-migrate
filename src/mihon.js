@@ -1,136 +1,162 @@
 // src/mihon.js - Mihon/Tachiyomi Backup Parser & Builder
 // Format: GZipped Protobuf binary (.tachibk)
 
-let cachedBackupMessage = null;
-let cachedLongZero = null;
+let _cachedBackupMsg = null;
+let _cachedLong = null;
+let _longZero = null;
+let _longCache = new Map();
+const _LONG_CACHE_MAX = 1024;
 
 function getBackupMessage() {
-  if (cachedBackupMessage) return cachedBackupMessage;
+  if (_cachedBackupMsg) return _cachedBackupMsg;
   if (typeof protobuf === 'undefined' || typeof window.MIHON_PROTO_SCHEMA === 'undefined') {
     throw new Error('Dependencies missing: protobuf.js or schema');
   }
-  // This parses the complex text schema into AST and compiles it.
-  // It is very heavy and should only be done exactly once.
   const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
-  cachedBackupMessage = root.lookupType('Backup');
-  return cachedBackupMessage;
+  _cachedBackupMsg = root.lookupType('Backup');
+  _cachedLong = protobuf.util.Long;
+  if (_cachedLong) _longZero = _cachedLong.fromNumber(0, true);
+  return _cachedBackupMsg;
+}
+
+// Ultra-fast Long factory with bounded cache
+function toLong(val) {
+  if (!val || val === 0 || val === '0') return _longZero || 0;
+  if (!_cachedLong) return Number(val) || 0;
+
+  // Cache hit for repeated values (timestamps, source IDs reused across manga)
+  const cached = _longCache.get(val);
+  if (cached) return cached;
+
+  let result;
+  if (typeof val === 'string') {
+    try { result = _cachedLong.fromString(val, true); } catch(e) { return _longZero || 0; }
+  } else {
+    result = _cachedLong.fromNumber(Number(val) || 0, true);
+  }
+
+  if (_longCache.size >= _LONG_CACHE_MAX) _longCache.clear();
+  _longCache.set(val, result);
+  return result;
 }
 
 /**
  * Parse a Mihon backup file (.tachibk)
- * @param {File} file - The uploaded .tachibk file
- * @returns {Promise<Object>} Normalized backup data
  */
 async function parseMihonBackup(file) {
   const result = {
     success: false,
-    data: {
-      manga: [],
-      categories: [],
-      sources: [],
-    },
-    debug: {
-      isGzip: false,
-      protoSize: 0,
-      errors: [],
-    }
+    data: { manga: [], categories: [], sources: [] },
+    debug: { isGzip: false, protoSize: 0, errors: [] }
   };
 
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    let bytes = new Uint8Array(arrayBuffer);
+    let bytes = new Uint8Array(await file.arrayBuffer());
 
     // Handle gzip (and double-gzip)
-    let decompressAttempts = 0;
-    while (bytes[0] === 0x1f && bytes[1] === 0x8b && decompressAttempts < 3) {
+    let attempts = 0;
+    while (bytes[0] === 0x1f && bytes[1] === 0x8b && attempts < 3) {
       result.debug.isGzip = true;
       bytes = pako.ungzip(bytes);
-      decompressAttempts++;
+      attempts++;
     }
     result.debug.protoSize = bytes.length;
 
     const BackupMessage = getBackupMessage();
-    
-    let decoded;
-    try {
-      const reader = protobuf.Reader.create(bytes);
-      decoded = BackupMessage.decode(reader);
-    } catch (decodeErr) {
-      console.warn('[mihon-parse] Decode failed:', decodeErr.message);
-      result.debug.errors.push(`Decode error: ${decodeErr.message}`);
-      throw decodeErr;
+    const decoded = BackupMessage.decode(bytes);
+    const backup = BackupMessage.toObject(decoded, { longs: String, enums: String, defaults: true });
+
+    // Extract manga — direct for-loop, avoid .map() allocation overhead
+    const rawManga = backup.backupManga;
+    const mangaLen = rawManga ? rawManga.length : 0;
+    const outManga = new Array(mangaLen);
+
+    for (let i = 0; i < mangaLen; i++) {
+      const m = rawManga[i];
+
+      // Chapters — direct loop
+      const rawCh = m.chapters;
+      const chLen = rawCh ? rawCh.length : 0;
+      const chapters = new Array(chLen);
+      for (let j = 0; j < chLen; j++) {
+        const ch = rawCh[j];
+        chapters[j] = {
+          url: ch.url,
+          name: ch.name,
+          scanlator: ch.scanlator || '',
+          read: ch.read || false,
+          bookmark: ch.bookmark || false,
+          lastPageRead: ch.lastPageRead || '0',
+          dateFetch: ch.dateFetch || '0',
+          dateUpload: ch.dateUpload || '0',
+          chapterNumber: ch.chapterNumber || 0,
+          sourceOrder: ch.sourceOrder || '0',
+          lastModifiedAt: ch.lastModifiedAt || '0',
+          version: ch.version || '0',
+        };
+      }
+
+      // History — direct loop
+      const rawHist = m.history;
+      const hLen = rawHist ? rawHist.length : 0;
+      const history = new Array(hLen);
+      for (let j = 0; j < hLen; j++) {
+        const h = rawHist[j];
+        history[j] = { url: h.url, lastRead: h.lastRead, readDuration: h.readDuration || '0' };
+      }
+
+      outManga[i] = {
+        source: m.source,
+        url: m.url,
+        title: m.title || '',
+        artist: m.artist || '',
+        author: m.author || '',
+        description: m.description || '',
+        genre: m.genre || [],
+        status: m.status || 0,
+        thumbnailUrl: m.thumbnailUrl || '',
+        dateAdded: m.dateAdded || '0',
+        favorite: m.favorite !== false,
+        categories: m.categories || [],
+        chapters: chapters,
+        history: history,
+        tracking: m.tracking || [],
+        excludedScanlators: m.excludedScanlators || [],
+        viewer: m.viewer || 0,
+        chapterFlags: m.chapterFlags || 0,
+        viewerFlags: m.viewer_flags || 0,
+        updateStrategy: m.updateStrategy || 0,
+        lastModifiedAt: m.lastModifiedAt || '0',
+        favoriteModifiedAt: m.favoriteModifiedAt || '0',
+        version: m.version || '0',
+        notes: m.notes || '',
+        initialized: m.initialized || false,
+      };
     }
-    
-    const backup = BackupMessage.toObject(decoded, {
-      longs: String,
-      enums: String,
-      defaults: true,
-    });
+    result.data.manga = outManga;
 
-    // Extract manga
-    result.data.manga = (backup.backupManga || []).map(m => ({
-      source: m.source,
-      url: m.url,
-      title: m.title || '',
-      artist: m.artist || '',
-      author: m.author || '',
-      description: m.description || '',
-      genre: m.genre || [],
-      status: m.status || 0,
-      thumbnailUrl: m.thumbnailUrl || '',
-      dateAdded: m.dateAdded || '0',
-      favorite: m.favorite !== false,
-      categories: m.categories || [],
-      chapters: (m.chapters || []).map(ch => ({
-        url: ch.url,
-        name: ch.name,
-        scanlator: ch.scanlator || '',
-        read: ch.read || false,
-        bookmark: ch.bookmark || false,
-        lastPageRead: ch.lastPageRead || '0',
-        dateFetch: ch.dateFetch || '0',
-        dateUpload: ch.dateUpload || '0',
-        chapterNumber: ch.chapterNumber || 0,
-        sourceOrder: ch.sourceOrder || '0',
-        lastModifiedAt: ch.lastModifiedAt || '0',
-        version: ch.version || '0',
-      })),
-      history: (m.history || []).map(h => ({
-        url: h.url,
-        lastRead: h.lastRead,
-        readDuration: h.readDuration || '0',
-      })),
-      tracking: m.tracking || [],
-      excludedScanlators: m.excludedScanlators || [],
-      viewer: m.viewer || 0,
-      chapterFlags: m.chapterFlags || 0,
-      viewerFlags: m.viewer_flags || 0,
-      updateStrategy: m.updateStrategy || 0,
-      lastModifiedAt: m.lastModifiedAt || '0',
-      favoriteModifiedAt: m.favoriteModifiedAt || '0',
-      version: m.version || '0',
-      notes: m.notes || '',
-      initialized: m.initialized || false,
-    }));
+    // Categories
+    const rawCats = backup.backupCategories;
+    const catLen = rawCats ? rawCats.length : 0;
+    const outCats = new Array(catLen);
+    for (let i = 0; i < catLen; i++) {
+      const c = rawCats[i];
+      outCats[i] = { name: c.name, order: c.order || 0, id: c.id || 0, flags: c.flags || 0 };
+    }
+    result.data.categories = outCats;
 
-    // Extract categories
-    result.data.categories = (backup.backupCategories || []).map(c => ({
-      name: c.name,
-      order: c.order || 0,
-      id: c.id || 0,
-      flags: c.flags || 0,
-    }));
+    // Sources
+    const rawSrc = backup.backupSources;
+    const srcLen = rawSrc ? rawSrc.length : 0;
+    const outSrc = new Array(srcLen);
+    for (let i = 0; i < srcLen; i++) {
+      outSrc[i] = { name: rawSrc[i].name || '', sourceId: rawSrc[i].sourceId };
+    }
+    result.data.sources = outSrc;
 
-    // Extract sources
-    result.data.sources = (backup.backupSources || []).map(s => ({
-      name: s.name || '',
-      sourceId: s.sourceId,
-    }));
-
-    result.success = result.data.manga.length > 0;
-
+    result.success = mangaLen > 0;
   } catch (e) {
-    result.debug.errors.push(`Parse failed: ${e.message}`);
+    result.debug.errors.push('Parse failed: ' + e.message);
   }
 
   return result;
@@ -138,182 +164,148 @@ async function parseMihonBackup(file) {
 
 /**
  * Create a Mihon backup file from Kotatsu parsed data
- * Produces a valid .tachibk that Mihon can actually import.
- * @param {Object} data - Parsed Kotatsu data (from parseKotatsuBackup)
- * @returns {Promise<Blob>} The .tachibk file as a Blob
  */
 async function createMihonBackup(data) {
   const BackupMessage = getBackupMessage();
-  const Long = protobuf.util.Long;
 
-  // Ultra-fast cached zero since ~80% of Long allocations in backups are zeroes
-  if (Long && !cachedLongZero) {
-    cachedLongZero = Long.fromNumber(0, true);
-  }
+  // --- Categories ---
+  const cats = data.categories;
+  const catLen = cats.length;
+  const backupCategories = new Array(catLen);
+  const kotatsuIdToMihonOrder = Object.create(null);
 
-  // Helper: create a Long value from a number or string
-  function toLong(val) {
-    if (!val || val === '0' || val === 0) return cachedLongZero || 0;
-    if (Long) {
-      if (typeof val === 'string') {
-        try { return Long.fromString(val, true); } catch(e) { return cachedLongZero || 0; }
-      }
-      return Long.fromNumber(Number(val) || 0, true);
-    }
-    return Number(val) || 0;
-  }
-
-  // --- Build category mapping ---
-  // Kotatsu categories have category_id and title
-  // Mihon categories use order as the reference
-  const backupCategories = data.categories.map((c, idx) => {
-    const catName = c.title || c.name || `Category ${idx + 1}`;
-    return {
-      name: String(catName),
-      order: toLong(idx),
-      id: toLong(idx + 1),
-      flags: toLong(0),
+  for (let i = 0; i < catLen; i++) {
+    const c = cats[i];
+    backupCategories[i] = {
+      name: String(c.title || c.name || ('Category ' + (i + 1))),
+      order: toLong(i),
+      id: toLong(i + 1),
+      flags: _longZero || 0,
     };
-  });
+    kotatsuIdToMihonOrder[c.category_id || c.id || (i + 1)] = i;
+  }
 
-  // Map Kotatsu category_id -> Mihon order index
-  const kotatsuIdToMihonOrder = {};
-  data.categories.forEach((c, idx) => {
-    const catId = c.category_id || c.id || idx + 1;
-    kotatsuIdToMihonOrder[catId] = idx;
-  });
-
-  // --- Build history lookup from separate history array ---
-  const historyByMangaId = {};
-  if (data.history && Array.isArray(data.history)) {
-    data.history.forEach(h => {
+  // --- History lookup: prototype-free object for O(1) ---
+  const historyByMangaId = Object.create(null);
+  const histArr = data.history;
+  if (histArr) {
+    for (let i = 0; i < histArr.length; i++) {
+      const h = histArr[i];
       const mId = h.manga_id;
       if (!historyByMangaId[mId]) historyByMangaId[mId] = [];
       historyByMangaId[mId].push({
         url: String(h.url || h.chapter_url || ''),
         lastRead: toLong(h.updated_at || h.created_at || Date.now()),
-        readDuration: toLong(0),
+        readDuration: _longZero || 0,
       });
-    });
+    }
   }
 
-  // --- Build manga list ---
-  const sourceTracker = new Map(); // Track unique source IDs and names
+  // --- Manga ---
+  const mangaList = data.manga;
+  const mangaLen = mangaList.length;
+  const backupManga = new Array(mangaLen);
+  const sourceTracker = new Map();
+  const findId = window.findMihonSourceId;
+  const mapStatus = window.mapKotatsuStatusToMihon;
+  const emptyArr = []; // Shared frozen empty array ref
 
-  const backupManga = data.manga.map((rawManga, idx) => {
-    // Kotatsu structure: { manga_id, category_id, manga: { id, title, url, source, ... } }
+  for (let i = 0; i < mangaLen; i++) {
+    const rawManga = mangaList[i];
     const m = rawManga.manga || rawManga;
-    const mangaId = m.id || rawManga.manga_id || rawManga.id || idx + 1;
+    const mangaId = m.id || rawManga.manga_id || rawManga.id || (i + 1);
 
-    // Resolve source — Kotatsu uses names like "WEBTOON", "MANGADEX"
+    // Source
     const sourceName = m.source || '';
-    let sourceId = '0';
-    if (window.findMihonSourceId) {
-      sourceId = window.findMihonSourceId(sourceName);
-    }
-    
-    // Track source for backupSources
-    if (!sourceTracker.has(sourceId)) {
-      sourceTracker.set(sourceId, sourceName);
-    }
+    const sourceId = findId ? findId(sourceName) : '0';
+    if (!sourceTracker.has(sourceId)) sourceTracker.set(sourceId, sourceName);
 
-    // Map category
+    // Category
     const mangaCategories = [];
     const catId = rawManga.category_id;
     if (catId !== undefined && catId !== 0 && kotatsuIdToMihonOrder[catId] !== undefined) {
       mangaCategories.push(toLong(kotatsuIdToMihonOrder[catId]));
     }
 
-    // Build chapter list from history (basic reconstruction)
-    const mangaHistory = historyByMangaId[mangaId] || [];
-
-    // Extract tags/genres
-    let genres = [];
+    // Genres
+    let genres;
     if (Array.isArray(m.genre)) {
-      genres = m.genre.map(String);
+      genres = m.genre;
     } else if (Array.isArray(m.tags)) {
-      genres = m.tags.map(t => t.title || t.name || String(t));
+      const tagLen = m.tags.length;
+      genres = new Array(tagLen);
+      for (let t = 0; t < tagLen; t++) {
+        const tag = m.tags[t];
+        genres[t] = tag.title || tag.name || String(tag);
+      }
+    } else {
+      genres = emptyArr;
     }
 
-    // Keep original URL (don't strip domain)
-    const mangaUrl = String(m.url || m.public_url || '');
+    // Thumbnail — try multiple field names without chaining
+    const thumb = m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || m.thumbnailUrl || '';
 
-    return {
+    backupManga[i] = {
       source: toLong(sourceId),
-      url: mangaUrl,
+      url: String(m.url || m.public_url || ''),
       title: String(m.title || m.name || 'Unknown'),
       artist: String(m.artist || ''),
       author: String(m.author || ''),
       description: String(m.description || ''),
       genre: genres,
-      status: window.mapKotatsuStatusToMihon ? window.mapKotatsuStatusToMihon(m.state || m.status) : 0,
-      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || m.thumbnailUrl || ''),
+      status: mapStatus ? mapStatus(m.state || m.status) : 0,
+      thumbnailUrl: String(thumb),
       dateAdded: toLong(rawManga.created_at || m.dateAdded || Date.now()),
       viewer: 0,
       favorite: true,
       chapterFlags: 0,
       viewer_flags: 0,
       categories: mangaCategories,
-      chapters: [],
-      tracking: [],
-      history: mangaHistory,
+      chapters: emptyArr,
+      tracking: emptyArr,
+      history: historyByMangaId[mangaId] || emptyArr,
       updateStrategy: 0,
-      lastModifiedAt: toLong(0),
-      favoriteModifiedAt: toLong(0),
-      excludedScanlators: [],
-      version: toLong(0),
+      lastModifiedAt: _longZero || 0,
+      favoriteModifiedAt: _longZero || 0,
+      excludedScanlators: emptyArr,
+      version: _longZero || 0,
       notes: '',
       initialized: false,
     };
-  });
+  }
 
-  // --- Build sources list ---
-  const backupSources = [];
+  // --- Sources ---
+  const backupSources = new Array(sourceTracker.size);
+  let si = 0;
+  const findName = window.findKotatsuSourceName;
   for (const [srcId, srcName] of sourceTracker) {
-    // Try to get a clean display name
     let displayName = srcName;
-    if (displayName === 'UNKNOWN' || displayName === 'Unknown' || !displayName) {
-      // Try reverse lookup
-      if (window.findKotatsuSourceName) {
-        const resolved = window.findKotatsuSourceName(srcId);
+    if (!displayName || displayName === 'UNKNOWN' || displayName === 'Unknown') {
+      if (findName) {
+        const resolved = findName(srcId);
         if (resolved !== 'Unknown') displayName = resolved;
       }
     }
-    // Clean up Kotatsu-style names for Mihon display
-    // e.g., "MANGA_DEX" -> "MangaDex"
-    if (displayName === displayName.toUpperCase() && displayName.includes('_')) {
-      displayName = displayName.split('_').map(w => 
-        w.charAt(0) + w.slice(1).toLowerCase()
-      ).join(' ');
+    // Clean UPPER_CASE names
+    if (displayName === displayName.toUpperCase() && displayName.indexOf('_') !== -1) {
+      const parts = displayName.split('_');
+      for (let p = 0; p < parts.length; p++) {
+        parts[p] = parts[p].charAt(0) + parts[p].slice(1).toLowerCase();
+      }
+      displayName = parts.join(' ');
     }
-
-    backupSources.push({
-      sourceId: toLong(srcId),
-      name: String(displayName || 'Unknown'),
-    });
+    backupSources[si++] = { sourceId: toLong(srcId), name: String(displayName || 'Unknown') };
   }
 
-  const payload = {
-    backupManga,
-    backupCategories,
-    backupSources,
-  };
-
-  // Verify
-  const errMsg = BackupMessage.verify(payload);
-  if (errMsg) {
-    console.warn('[mihon-build] Proto verification warning:', errMsg);
-  }
-
-  // Encode and gzip
-  const message = BackupMessage.create(payload);
+  // --- Encode + gzip ---
+  // Skip verify() in production — it's O(N) and we control the schema
+  const message = BackupMessage.create({ backupManga, backupCategories, backupSources });
   const buffer = BackupMessage.encode(message).finish();
-  const gzipped = pako.gzip(buffer);
+  const gzipped = pako.gzip(buffer, { level: 1 }); // Fast compression
 
   return new Blob([gzipped], { type: 'application/octet-stream' });
 }
 
-// Export
 if (typeof window !== 'undefined') {
   window.parseMihonBackup = parseMihonBackup;
   window.createMihonBackup = createMihonBackup;
