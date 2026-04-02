@@ -1,3 +1,4 @@
+// cspell:disable
 // src/sources.js - Comprehensive Source ID Mappings
 // Generated automatically from Keiyoushi Extensions Repository
 // Total Sources: 3352
