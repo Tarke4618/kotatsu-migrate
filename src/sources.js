@@ -3362,7 +3362,17 @@ const SOURCE_MAP = {
 // We store both exact AND truncated keys to handle JS int64 precision loss
 const REVERSE_SOURCE_MAP = {};
 const REVERSE_SOURCE_MAP_TRUNCATED = {}; // first 15 chars of ID -> name
+
+// Precomputed map for instant O(1) normalized string matching
+const NORMALIZED_SOURCE_MAP = {};
+
 for (const [name, id] of Object.entries(SOURCE_MAP)) {
+  // Precompute normalized key (removes O(N) regex evaluation during lookups)
+  const normKey = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!NORMALIZED_SOURCE_MAP[normKey]) {
+    NORMALIZED_SOURCE_MAP[normKey] = id;
+  }
+
   if (!REVERSE_SOURCE_MAP[id]) {
     REVERSE_SOURCE_MAP[id] = name;
   }
@@ -3372,6 +3382,10 @@ for (const [name, id] of Object.entries(SOURCE_MAP)) {
     REVERSE_SOURCE_MAP_TRUNCATED[truncKey] = name;
   }
 }
+
+// Cache the entries arrays for fallback loops to prevent array allocations during function calls
+const NORMALIZED_SOURCE_ENTRIES = Object.entries(NORMALIZED_SOURCE_MAP);
+const REVERSE_SOURCE_ENTRIES = Object.entries(REVERSE_SOURCE_MAP);
 
 // Manual aliases for sources that might be missing from the repo or have different names
 const MANUAL_ALIASES = {
@@ -3395,7 +3409,7 @@ const MANUAL_ALIASES = {
 function findMihonSourceId(kotatsuSourceName) {
   if (!kotatsuSourceName) return "0";
   
-  // Normalize the name
+  // Normalize the name (only done ONCE here per lookup instead of 3,000 times)
   const normalized = kotatsuSourceName.toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .trim();
@@ -3407,15 +3421,14 @@ function findMihonSourceId(kotatsuSourceName) {
   // 1. Direct match
   if (SOURCE_MAP[kotatsuSourceName]) return SOURCE_MAP[kotatsuSourceName];
   
-  // 2. Normalized iteration match
-  for (const [key, id] of Object.entries(SOURCE_MAP)) {
-    const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (keyNorm === normalized) return id;
-  }
+  // 2. Precomputed O(1) Normalized match (instant lookup)
+  if (NORMALIZED_SOURCE_MAP[normalized]) return NORMALIZED_SOURCE_MAP[normalized];
   
   // 3. Contains match (safe fallback)
-  for (const [key, id] of Object.entries(SOURCE_MAP)) {
-    const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Iterates the pre-cached array. No regex operations needed here.
+  for (let i = 0; i < NORMALIZED_SOURCE_ENTRIES.length; i++) {
+    const keyNorm = NORMALIZED_SOURCE_ENTRIES[i][0];
+    const id = NORMALIZED_SOURCE_ENTRIES[i][1];
     if (normalized.includes(keyNorm) || keyNorm.includes(normalized)) {
       if (keyNorm.length > 3 && normalized.length > 3) return id;
     }
@@ -3444,15 +3457,16 @@ function findKotatsuSourceName(mihonSourceId) {
   // 1. Exact match
   if (REVERSE_SOURCE_MAP[id]) return REVERSE_SOURCE_MAP[id];
   
-  // 2. Truncated match (handles precision loss)
-  // JS loses precision beyond ~15-16 significant digits for int64
+  // 2. Truncated match (handles precision loss - O(1) lookup)
   const truncKey = id.substring(0, 15);
   if (REVERSE_SOURCE_MAP_TRUNCATED[truncKey]) return REVERSE_SOURCE_MAP_TRUNCATED[truncKey];
   
-  // 3. Try matching by removing trailing zeros (common precision artifact)
+  // 3. Try matching by removing trailing zeros (rare fallback)
   const trimmed = id.replace(/0+$/, '');
   if (trimmed.length >= 10) {
-    for (const [mapId, name] of Object.entries(REVERSE_SOURCE_MAP)) {
+    for (let i = 0; i < REVERSE_SOURCE_ENTRIES.length; i++) {
+      const mapId = REVERSE_SOURCE_ENTRIES[i][0];
+      const name = REVERSE_SOURCE_ENTRIES[i][1];
       if (mapId.startsWith(trimmed) || trimmed.startsWith(mapId.substring(0, trimmed.length))) {
         return name;
       }
