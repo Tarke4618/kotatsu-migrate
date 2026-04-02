@@ -1,4 +1,5 @@
 // src/three-bg.js - Three.js Particle Background with Mouse Interaction
+// cspell:words raycaster Raycaster lerp
 // Only ash-colored particles, no geometric shapes
 
 (function() {
