@@ -1,4 +1,4 @@
-// src/kotatsu.js - Kotatsu Backup Parser
+// src/kotatsu.js - Kotatsu Backup Parser & Builder
 // cspell:ignore favourites
 // Format: ZIP archive containing JSON files
 
@@ -27,7 +27,6 @@ async function parseKotatsuBackup(file) {
     const contents = await zip.loadAsync(file);
     result.debug.files = Object.keys(contents.files);
 
-    // Find and parse JSON files (recursive search)
     const jsonFiles = {
       favorites: null,
       categories: null,
@@ -38,7 +37,6 @@ async function parseKotatsuBackup(file) {
     for (const path of Object.keys(contents.files)) {
       const entry = contents.files[path];
       if (entry.dir) continue;
-
       const name = path.split('/').pop().toLowerCase();
       
       if (name === 'favourites.json' || name === 'favourites' || name === 'manga.json') {
@@ -55,7 +53,6 @@ async function parseKotatsuBackup(file) {
       }
     }
 
-    // Parse favorites (manga list)
     if (jsonFiles.favorites) {
       try {
         const data = JSON.parse(jsonFiles.favorites);
@@ -65,7 +62,6 @@ async function parseKotatsuBackup(file) {
       }
     }
 
-    // Parse categories
     if (jsonFiles.categories) {
       try {
         const data = JSON.parse(jsonFiles.categories);
@@ -75,7 +71,6 @@ async function parseKotatsuBackup(file) {
       }
     }
 
-    // Parse history
     if (jsonFiles.history) {
       try {
         const data = JSON.parse(jsonFiles.history);
@@ -85,7 +80,6 @@ async function parseKotatsuBackup(file) {
       }
     }
 
-    // Parse bookmarks
     if (jsonFiles.bookmarks) {
       try {
         const data = JSON.parse(jsonFiles.bookmarks);
@@ -109,139 +103,198 @@ async function parseKotatsuBackup(file) {
 
 
 /**
- * Create a Kotatsu backup file (.bk.zip) from normalized data
- * @param {Object} data - Normalized backup data (from Mihon parser)
+ * Create a Kotatsu backup file (.bk.zip) from Mihon parsed data
+ * Produces a valid backup that Kotatsu can actually import.
+ * @param {Object} data - Parsed Mihon data (from parseMihonBackup)
  * @returns {Promise<Blob>} The .bk.zip file as a Blob
  */
 async function createKotatsuBackup(data) {
   const zip = new JSZip();
   const timestamp = Date.now();
 
-  // 1. Categories
-  // Map normalized categories to Kotatsu format
+  // --- Build source lookup from Mihon data ---
+  // data.sources contains {name, sourceId} from the Mihon backup
+  const mihonSourceLookup = {};
+  if (data.sources && Array.isArray(data.sources)) {
+    data.sources.forEach(s => {
+      mihonSourceLookup[String(s.sourceId)] = s.name;
+    });
+  }
+
+  // --- 1. Categories ---
+  // Map Mihon categories to Kotatsu format
+  // Real Kotatsu categories use category_id as an integer key
   const kotatsuCategories = data.categories.map((c, idx) => ({
-    category_id: idx + 1, // Generate 1-based IDs
-    title: c.name,
-    order: "NEWEST", // Default sort order
-    show_in_lib: true,
-    track: true,
+    category_id: idx + 1,
     created_at: timestamp,
-    sort_key: c.order || idx
+    sort_key: idx,
+    title: c.name || `Category ${idx + 1}`,
+    order: "NEWEST",
+    track: true,
+    show_in_lib: true,
   }));
 
-  // Create a lookup for category name -> id to help manga mapping
-  const categoryNameMap = {};
-  kotatsuCategories.forEach(c => {
-    categoryNameMap[c.title] = c.category_id;
+  // Mihon categories[i] has order/id — we map order/index to our new category_id
+  // Mihon stores category references in manga.categories as indices (order values)
+  const mihonOrderToKotatsuId = {};
+  data.categories.forEach((c, idx) => {
+    // Mihon uses the order as the reference key in manga.categories
+    const orderKey = c.order !== undefined ? c.order : idx;
+    mihonOrderToKotatsuId[String(orderKey)] = idx + 1; // Our 1-based category_id
   });
 
-  // 2. Manga (Favorites)
-  // Map normalized manga to Kotatsu format
+  // --- 2. Favourites (Manga) ---
   const kotatsuFavorites = [];
   const kotatsuHistory = [];
 
   data.manga.forEach((m, idx) => {
-    // Determine category ID & Extra Tags
-    // Mihon allows multiple categories, Kotatsu allows one.
-    // Strategy: 
-    // 1. Pick the first valid category as the main Kotatsu "folder" (category_id).
-    // 2. Add any SUBSEQUENT categories as tags to preserve data.
-    let categoryId = 0; 
-    let extraTags = [];
+    // Generate a stable manga ID from the URL (like Kotatsu does internally)
+    const mangaUrl = m.url || '';
+    const mangaId = generateStableMangaId(mangaUrl, idx);
 
+    // Resolve category
+    let categoryId = 0;
     if (m.categories && m.categories.length > 0) {
-      m.categories.forEach((catIdOrOrder, idx) => {
-        // Find category by ID (protobuf) or Order (fallback)
-        const cat = data.categories.find(c => c.id === catIdOrOrder || c.order === catIdOrOrder);
-        
+      const firstCatRef = String(m.categories[0]);
+      categoryId = mihonOrderToKotatsuId[firstCatRef] || 0;
+    }
+
+    // Resolve source name from Mihon source ID
+    let sourceName = 'UNKNOWN';
+    const srcId = String(m.source || '0');
+    // First try the Mihon backup's own source list
+    if (mihonSourceLookup[srcId]) {
+      sourceName = mihonSourceLookup[srcId].toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    } else {
+      // Fall back to our global reverse map
+      const resolved = window.findKotatsuSourceName ? window.findKotatsuSourceName(srcId) : 'Unknown';
+      if (resolved && resolved !== 'Unknown') {
+        sourceName = resolved.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+      }
+    }
+
+    // Build tags from genres
+    const tags = (m.genre || []).map(g => ({
+      title: g,
+      key: g.toLowerCase().replace(/\s+/g, '_'),
+      source: sourceName,
+    }));
+
+    // Add extra categories as tags (Mihon allows multiple, Kotatsu only one)
+    if (m.categories && m.categories.length > 1) {
+      m.categories.slice(1).forEach(catRef => {
+        const cat = data.categories.find(c => 
+          String(c.order) === String(catRef) || String(c.id) === String(catRef)
+        );
         if (cat) {
-          if (idx === 0) {
-            // First category becomes the main folder
-            categoryId = categoryNameMap[cat.name] || 0;
-          } else {
-            // Subsequent categories become tags
-            extraTags.push({
-              title: cat.name, // Use simple name like "Reading" or "Fantasy"
-              key: `category:${cat.name.toLowerCase()}`, // Unique key
-              source: "MIGRATE_CAT"
-            });
-          }
+          tags.push({
+            title: cat.name,
+            key: `category:${cat.name.toLowerCase()}`,
+            source: 'MIGRATE_CAT',
+          });
         }
       });
     }
 
-    // Resolve Source Name
-    // m.source is the ID (Int64). We need the Name.
-    const sourceName = window.findKotatsuSourceName ? window.findKotatsuSourceName(m.source) : "Unknown";
-    const status = window.mapMihonStatusToKotatsu ? window.mapMihonStatusToKotatsu(m.status) : "ONGOING";
+    // Map status
+    const status = window.mapMihonStatusToKotatsu 
+      ? window.mapMihonStatusToKotatsu(m.status) 
+      : 'ONGOING';
 
-    // Merge existing tags with our new extra-category tags
-    const existingTags = (m.genre || []).map(g => ({ title: g, key: g, source: sourceName }));
-    const finalTags = [...existingTags, ...extraTags];
+    // Build the full URL - Kotatsu needs full URL for public_url
+    let publicUrl = m.url || '';
+    // Try to reconstruct full URL from source if it's a relative path
+    // For now, keep as-is since we don't know the base domain
 
     const mangaObj = {
-      manga_id: m.id || ((idx + 1) * -1), // Generate a temp ID if missing
+      manga_id: mangaId,
       category_id: categoryId,
       sort_key: 0,
       pinned: false,
-      created_at: m.dateAdded || timestamp,
+      created_at: Number(m.dateAdded) || timestamp,
       manga: {
-        id: m.id || ((idx + 1) * -1),
-        title: m.title,
-        url: m.url,
-        public_url: m.url, // Best guess
-        cover_url: m.thumbnailUrl,
+        id: mangaId,
+        title: m.title || 'Unknown',
+        alt_title: '',
+        url: m.url || '',
+        public_url: publicUrl,
+        rating: -1.0,
+        nsfw: false,
+        content_rating: '',
+        cover_url: m.thumbnailUrl || '',
+        large_cover_url: m.thumbnailUrl || '',
         state: status,
-        author: m.author,
+        author: m.author || m.artist || '',
         source: sourceName,
-        tags: finalTags
+        tags: tags,
       }
     };
     kotatsuFavorites.push(mangaObj);
 
-    // 3. History
+    // --- 3. History ---
     if (m.history && m.history.length > 0) {
       m.history.forEach(h => {
+        const chapterUrl = h.url || '';
         kotatsuHistory.push({
-          manga_id: mangaObj.manga_id,
-          created_at: h.lastRead || timestamp,
-          updated_at: h.lastRead || timestamp,
-          // Mihon history doesn't strictly have chapter IDs, often uses URL.
-          // Kotatsu needs a unique identifying way.
-          // We'll leave chapter_id as valid-looking integer hash of url
-          chapter_id: stringHash(h.url), 
-          scroll: 0,
-          percent: 0,
-          page: 0
+          manga_id: mangaId,
+          created_at: Number(h.lastRead) || timestamp,
+          updated_at: Number(h.lastRead) || timestamp,
+          chapter_id: generateStableMangaId(chapterUrl, 0),
+          page: 0,
+          scroll: 0.0,
+          percent: 0.0,
+          chapters: 0,
+          manga: mangaObj.manga,
         });
       });
     }
   });
 
-  // Add files to ZIP
-  zip.file("categories.json", JSON.stringify(kotatsuCategories));
-  zip.file("favourites.json", JSON.stringify(kotatsuFavorites));
-  zip.file("history.json", JSON.stringify(kotatsuHistory));
-  
-  // Add empty/default files for completeness
-  zip.file("bookmarks.json", "[]");
-  zip.file("settings.json", "{}");
-  zip.file("index", '{"version":1}'); 
+  // --- Write ZIP files ---
+  // Index - MUST match real Kotatsu format: array with app metadata
+  const indexData = [{
+    app_id: "org.koitharu.kotatsu",
+    app_version: 800,
+    created_at: timestamp,
+  }];
+  zip.file("index", JSON.stringify(indexData));
 
-  // Generate blob
+  zip.file("favourites", JSON.stringify(kotatsuFavorites));
+  zip.file("categories", JSON.stringify(kotatsuCategories));
+  zip.file("history", JSON.stringify(kotatsuHistory));
+  
+  // Required empty files that Kotatsu expects
+  zip.file("bookmarks", "[]");
+  zip.file("sources", "[]");
+  zip.file("settings", "[]");
+
   return await zip.generateAsync({ type: "blob" });
 }
 
-// Helper: Simple string hash for IDs
-function stringHash(str) {
-  let hash = 0;
-  if (str.length === 0) return hash;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+/**
+ * Generate a stable positive manga ID from a URL string.
+ * Produces a deterministic large positive integer.
+ */
+function generateStableMangaId(url, fallbackIdx) {
+  if (!url || url.length === 0) return fallbackIdx + 1;
+  
+  // Use murmurhash if available
+  if (typeof murmurhash3_32_gc === 'function') {
+    const h1 = murmurhash3_32_gc(url, 0x1234) >>> 0; // unsigned
+    const h2 = murmurhash3_32_gc(url, 0x5678) >>> 0; // unsigned
+    // Combine two unsigned 32-bit hashes into a large positive number
+    // Stay within JS safe integer range (2^53)
+    return h1 * 65536 + (h2 >>> 16);
   }
-  return hash;
+  
+  // Fallback: simple positive hash
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash) || (fallbackIdx + 1);
 }
 
 // Export for use in app.js

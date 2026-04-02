@@ -3358,11 +3358,18 @@ const SOURCE_MAP = {
   "블랙툰 (ko)": "7080800841003944426",
 };
 
-// Reverse mapping: Mihon ID -> Kotatsu name
+// Reverse mapping: Mihon ID -> Source name
+// We store both exact AND truncated keys to handle JS int64 precision loss
 const REVERSE_SOURCE_MAP = {};
+const REVERSE_SOURCE_MAP_TRUNCATED = {}; // first 15 chars of ID -> name
 for (const [name, id] of Object.entries(SOURCE_MAP)) {
   if (!REVERSE_SOURCE_MAP[id]) {
     REVERSE_SOURCE_MAP[id] = name;
+  }
+  // Also store truncated version (handles precision loss in protobuf.js)
+  const truncKey = String(id).substring(0, 15);
+  if (!REVERSE_SOURCE_MAP_TRUNCATED[truncKey]) {
+    REVERSE_SOURCE_MAP_TRUNCATED[truncKey] = name;
   }
 }
 
@@ -3373,12 +3380,11 @@ const MANUAL_ALIASES = {
   "mangaplus": "1998944621602463790",
   "manga plus": "1998944621602463790",
   "shueisha manga plus": "1998944621602463790",
-  "bato": "7890050626002177109", // Points to Bato.to (Keiyoushi ID)
+  "bato": "7890050626002177109",
   "batoto": "7890050626002177109",
-  "comick": "4972933717624256217", // Points to Comick (Unoriginal)
+  "comick": "4972933717624256217",
   "comick.fun": "4972933717624256217",
-  "mangasee": "9", // MangaSee - often ID 9 in some contexts? Or maybe standard ID.
-  // Add more if needed based on Kotatsu parsers
+  "mangasee": "9",
 };
 
 /**
@@ -3394,64 +3400,66 @@ function findMihonSourceId(kotatsuSourceName) {
     .replace(/[^a-z0-9]/g, "")
     .trim();
 
-  // 0. Manual Aliases (Highest Priority)
-  // Check exact normalized match against manual keys
+  // 0. Manual Aliases
   if (MANUAL_ALIASES[normalized]) return MANUAL_ALIASES[normalized];
-  // Check raw name
   if (MANUAL_ALIASES[kotatsuSourceName.toLowerCase()]) return MANUAL_ALIASES[kotatsuSourceName.toLowerCase()];
   
-  // 1. Direct match (Case-sensitive try first, though mapped keys are mixed case)
-  if (SOURCE_MAP[kotatsuSourceName]) return SOURCE_MAP[kotatsuSourceName];
-
-  // 2. Direct match keys are stored as written.
-  // Let's loop? No, too slow for 5000 entries? 
-  // Actually 5000 is fine for JS loop, but map lookup is better.
-  // We can try to construct a normalized lookup map once if strict perf is needed.
-  // For now, let's try a few heuristic keys.
-  
-  // Try exact match
+  // 1. Direct match
   if (SOURCE_MAP[kotatsuSourceName]) return SOURCE_MAP[kotatsuSourceName];
   
-  // Try simple lowercase match if we iterate? 
-  // Let's do a dynamic lookup for "loose" matching only if direct fails.
-  
-  // Optimization: Create a normalized map lazily? 
-  // Or just iterate. 2000-3000 elements iteration is instant.
-  
+  // 2. Normalized iteration match
   for (const [key, id] of Object.entries(SOURCE_MAP)) {
-      const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (keyNorm === normalized) return id;
+    const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (keyNorm === normalized) return id;
   }
   
-  // Contains match (safer fallback)
+  // 3. Contains match (safe fallback)
   for (const [key, id] of Object.entries(SOURCE_MAP)) {
-      const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (normalized.includes(keyNorm) || keyNorm.includes(normalized)) {
-           if (keyNorm.length > 3 && normalized.length > 3) return id;
-      }
+    const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized.includes(keyNorm) || keyNorm.includes(normalized)) {
+      if (keyNorm.length > 3 && normalized.length > 3) return id;
+    }
   }
   
   console.warn("[sources] Unknown Kotatsu source:", kotatsuSourceName);
   
-  // Fallback: Generate a deterministic ID compatible with Mihon's generic source handling
-  // This ensures data is not lost even if the extension is missing.
   if (window.generateSourceId) {
-      return window.generateSourceId(kotatsuSourceName, 'en');
+    return window.generateSourceId(kotatsuSourceName, 'en');
   }
 
   return "0";
 }
 
 /**
- * Find Kotatsu source name from Mihon source ID
+ * Find source name from Mihon source ID
+ * Handles JavaScript int64 precision loss by doing truncated prefix matching.
  * @param {string} mihonSourceId
- * @returns {string} Kotatsu source name or "Unknown"
+ * @returns {string} Source name or "Unknown"
  */
 function findKotatsuSourceName(mihonSourceId) {
-  if (!mihonSourceId) return "Unknown";
+  if (!mihonSourceId || mihonSourceId === "0") return "Local";
   
   const id = String(mihonSourceId);
-  return REVERSE_SOURCE_MAP[id] || "Unknown";
+  
+  // 1. Exact match
+  if (REVERSE_SOURCE_MAP[id]) return REVERSE_SOURCE_MAP[id];
+  
+  // 2. Truncated match (handles precision loss)
+  // JS loses precision beyond ~15-16 significant digits for int64
+  const truncKey = id.substring(0, 15);
+  if (REVERSE_SOURCE_MAP_TRUNCATED[truncKey]) return REVERSE_SOURCE_MAP_TRUNCATED[truncKey];
+  
+  // 3. Try matching by removing trailing zeros (common precision artifact)
+  const trimmed = id.replace(/0+$/, '');
+  if (trimmed.length >= 10) {
+    for (const [mapId, name] of Object.entries(REVERSE_SOURCE_MAP)) {
+      if (mapId.startsWith(trimmed) || trimmed.startsWith(mapId.substring(0, trimmed.length))) {
+        return name;
+      }
+    }
+  }
+
+  return "Unknown";
 }
 
 if (typeof window !== 'undefined') {
@@ -3460,3 +3468,4 @@ if (typeof window !== 'undefined') {
   window.findMihonSourceId = findMihonSourceId;
   window.findKotatsuSourceName = findKotatsuSourceName;
 }
+

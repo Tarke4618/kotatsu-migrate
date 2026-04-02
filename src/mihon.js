@@ -24,63 +24,30 @@ async function parseMihonBackup(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     let bytes = new Uint8Array(arrayBuffer);
-    
-    console.log('[mihon-parse] File size:', bytes.length, 'bytes');
-    console.log('[mihon-parse] First 4 bytes (hex):', 
-      bytes[0]?.toString(16), bytes[1]?.toString(16), bytes[2]?.toString(16), bytes[3]?.toString(16));
 
-    // Check if gzipped (magic bytes: 1f 8b) - handle double-gzip
+    // Handle gzip (and double-gzip)
     let decompressAttempts = 0;
     while (bytes[0] === 0x1f && bytes[1] === 0x8b && decompressAttempts < 3) {
       result.debug.isGzip = true;
-      console.log('[mihon-parse] Detected gzip, decompressing... (attempt', decompressAttempts + 1, ')');
       bytes = pako.ungzip(bytes);
       decompressAttempts++;
     }
     result.debug.protoSize = bytes.length;
-    console.log('[mihon-parse] After decompression:', bytes.length, 'bytes');
 
-    // Parse with protobuf.js
     if (typeof protobuf === 'undefined' || typeof window.MIHON_PROTO_SCHEMA === 'undefined') {
       throw new Error('Dependencies missing: protobuf.js or schema');
     }
 
-    console.log('[mihon-parse] Decompressed size:', bytes.length, 'bytes');
-    console.log('[mihon-parse] First 20 bytes:', Array.from(bytes.slice(0, 20)));
-
     const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
     const BackupMessage = root.lookupType('Backup');
     
-    // Try lenient decode - some newer Mihon versions may have extra fields
     let decoded;
     try {
-      // Create a reader and decode with it
       const reader = protobuf.Reader.create(bytes);
       decoded = BackupMessage.decode(reader);
     } catch (decodeErr) {
-      console.warn('[mihon-parse] Standard decode failed:', decodeErr.message);
-      
-      // Try to extract offset from error message or property
-      let match = decodeErr.message.match(/at offset (\d+)/);
-      let offset = match ? parseInt(match[1]) : (decodeErr.offset || -1);
-
-      if (offset !== -1 && offset < bytes.length) {
-        const start = Math.max(0, offset - 20);
-        const end = Math.min(bytes.length, offset + 20);
-        const snippet = Array.from(bytes.slice(start, end));
-        const hex = snippet.map(b => b.toString(16).padStart(2, '0')).join(' ');
-        console.log(`[mihon-parse] Bytes around offset ${offset}:`, hex);
-        console.log(`[mihon-parse] Pointer ^ at byte ${offset - start}`);
-        
-        result.debug.errors.push(`Parse error at offset ${offset}`);
-        result.debug.errors.push(`Bytes: ${hex}`);
-      }
-      
-      console.log('[mihon-parse] Trying alternative parsing...');
-      
-      // Try to at least show what we can parse
+      console.warn('[mihon-parse] Decode failed:', decodeErr.message);
       result.debug.errors.push(`Decode error: ${decodeErr.message}`);
-      result.debug.errors.push('This backup may use a newer Mihon format.');
       throw decodeErr;
     }
     
@@ -101,22 +68,39 @@ async function parseMihonBackup(file) {
       genre: m.genre || [],
       status: m.status || 0,
       thumbnailUrl: m.thumbnailUrl || '',
-      dateAdded: m.dateAdded || 0,
+      dateAdded: m.dateAdded || '0',
       favorite: m.favorite !== false,
       categories: m.categories || [],
       chapters: (m.chapters || []).map(ch => ({
         url: ch.url,
         name: ch.name,
+        scanlator: ch.scanlator || '',
         read: ch.read || false,
         bookmark: ch.bookmark || false,
-        lastPageRead: ch.lastPageRead || 0,
+        lastPageRead: ch.lastPageRead || '0',
+        dateFetch: ch.dateFetch || '0',
+        dateUpload: ch.dateUpload || '0',
         chapterNumber: ch.chapterNumber || 0,
+        sourceOrder: ch.sourceOrder || '0',
+        lastModifiedAt: ch.lastModifiedAt || '0',
+        version: ch.version || '0',
       })),
       history: (m.history || []).map(h => ({
         url: h.url,
         lastRead: h.lastRead,
-        readDuration: h.readDuration || 0,
+        readDuration: h.readDuration || '0',
       })),
+      tracking: m.tracking || [],
+      excludedScanlators: m.excludedScanlators || [],
+      viewer: m.viewer || 0,
+      chapterFlags: m.chapterFlags || 0,
+      viewerFlags: m.viewer_flags || 0,
+      updateStrategy: m.updateStrategy || 0,
+      lastModifiedAt: m.lastModifiedAt || '0',
+      favoriteModifiedAt: m.favoriteModifiedAt || '0',
+      version: m.version || '0',
+      notes: m.notes || '',
+      initialized: m.initialized || false,
     }));
 
     // Extract categories
@@ -134,33 +118,6 @@ async function parseMihonBackup(file) {
     }));
 
     result.success = result.data.manga.length > 0;
-    
-    // Debug logging - count manga per category
-    console.log(`[mihon-parse] Total manga parsed: ${result.data.manga.length}`);
-    console.log(`[mihon-parse] Total categories: ${result.data.categories.length}`);
-    
-    // Count manga per category
-    const catCounts = {};
-    result.data.manga.forEach(m => {
-      const cats = m.categories || [];
-      if (cats.length === 0) {
-        catCounts['no-category'] = (catCounts['no-category'] || 0) + 1;
-      } else {
-        cats.forEach(c => {
-          catCounts[c] = (catCounts[c] || 0) + 1;
-        });
-      }
-    });
-    console.log('[mihon-parse] Manga per category:', catCounts);
-    
-    // Show sample of first and last few manga
-    if (result.data.manga.length > 0) {
-      console.log('[mihon-parse] First manga:', result.data.manga[0].title, 'categories:', result.data.manga[0].categories);
-      if (result.data.manga.length > 5) {
-        const last = result.data.manga[result.data.manga.length - 1];
-        console.log('[mihon-parse] Last manga:', last.title, 'categories:', last.categories);
-      }
-    }
 
   } catch (e) {
     result.debug.errors.push(`Parse failed: ${e.message}`);
@@ -170,8 +127,9 @@ async function parseMihonBackup(file) {
 }
 
 /**
- * Create a Mihon backup file from normalized data
- * @param {Object} data - Normalized backup data (from Kotatsu parser)
+ * Create a Mihon backup file from Kotatsu parsed data
+ * Produces a valid .tachibk that Mihon can actually import.
+ * @param {Object} data - Parsed Kotatsu data (from parseKotatsuBackup)
  * @returns {Promise<Blob>} The .tachibk file as a Blob
  */
 async function createMihonBackup(data) {
@@ -181,122 +139,149 @@ async function createMihonBackup(data) {
 
   const root = protobuf.parse(window.MIHON_PROTO_SCHEMA).root;
   const BackupMessage = root.lookupType('Backup');
+  const Long = protobuf.util.Long;
 
-  // Build category lookup for ID -> order mapping
-  const categoryLookup = {};
+  // Helper: create a Long value from a number or string
+  function toLong(val) {
+    if (val === null || val === undefined) return Long ? Long.fromNumber(0, true) : 0;
+    if (Long) {
+      if (typeof val === 'string') {
+        try { return Long.fromString(val, true); } catch(e) { return Long.fromNumber(0, true); }
+      }
+      return Long.fromNumber(Number(val) || 0, true);
+    }
+    return Number(val) || 0;
+  }
+
+  // --- Build category mapping ---
+  // Kotatsu categories have category_id and title
+  // Mihon categories use order as the reference
   const backupCategories = data.categories.map((c, idx) => {
-    // Kotatsu categories have 'id' and 'title' fields
-    const catId = c.id || c.category_id || idx + 1;
     const catName = c.title || c.name || `Category ${idx + 1}`;
-    categoryLookup[catId] = idx; // Map Kotatsu ID to Mihon order/index
     return {
       name: String(catName),
-      order: Number(idx),
-      id: Number(idx), // Mihon uses order as id reference
-      flags: 0,
+      order: toLong(idx),
+      id: toLong(idx + 1),
+      flags: toLong(0),
     };
   });
-  
-  // DEBUG: Log category lookup
-  console.log('[mihon] Category lookup table:', categoryLookup);
-  console.log('[mihon] Backup categories:', backupCategories);
 
-  // Build history lookup (manga_id -> history entries)
-  const historyLookup = {};
+  // Map Kotatsu category_id -> Mihon order index
+  const kotatsuIdToMihonOrder = {};
+  data.categories.forEach((c, idx) => {
+    const catId = c.category_id || c.id || idx + 1;
+    kotatsuIdToMihonOrder[catId] = idx;
+  });
+
+  // --- Build history lookup from separate history array ---
+  const historyByMangaId = {};
   if (data.history && Array.isArray(data.history)) {
     data.history.forEach(h => {
-      const mangaId = h.manga_id;
-      if (!historyLookup[mangaId]) historyLookup[mangaId] = [];
-      historyLookup[mangaId].push({
+      const mId = h.manga_id;
+      if (!historyByMangaId[mId]) historyByMangaId[mId] = [];
+      historyByMangaId[mId].push({
         url: String(h.url || h.chapter_url || ''),
-        lastRead: Number(h.updated_at || h.created_at || Date.now()),
-        readDuration: 0,
+        lastRead: toLong(h.updated_at || h.created_at || Date.now()),
+        readDuration: toLong(0),
       });
     });
   }
 
-  // Build manga list
+  // --- Build manga list ---
+  const sourceTracker = new Map(); // Track unique source IDs and names
+
   const backupManga = data.manga.map((rawManga, idx) => {
-    // Kotatsu favorites often have manga data nested under 'manga' key
+    // Kotatsu structure: { manga_id, category_id, manga: { id, title, url, source, ... } }
     const m = rawManga.manga || rawManga;
-    const mangaId = m.id || rawManga.id || idx + 1;
-    
-    // Debug: log first manga structure
-    if (idx === 0) {
-      console.log('[mihon] Raw Kotatsu manga structure:', rawManga);
-      console.log('[mihon] Extracted manga object:', m);
-    }
-    
-    // Get categories for this manga
-    // Kotatsu stores category_id at the WRAPPER level (rawManga), not inside manga
-    const mangaCategories = [];
-    const catId = rawManga.category_id;
-    
-    if (idx < 3) {
-      console.log(`[mihon] Manga ${idx} (${m.title}): category_id=${catId}, lookup result=${categoryLookup[catId]}`);
-    }
-    
-    if (catId !== undefined && categoryLookup[catId] !== undefined) {
-      // Mihon categories field expects the ORDER/INDEX, not the original ID
-      mangaCategories.push(Number(categoryLookup[catId]));
-    }
+    const mangaId = m.id || rawManga.manga_id || rawManga.id || idx + 1;
 
-    // Get history for this manga
-    const mangaHistory = historyLookup[mangaId] || [];
-
-    // Sanitize URL (strip domain for relative path)
-    let cleanUrl = String(m.url || m.public_url || '');
-    try {
-      if (cleanUrl.startsWith('http')) {
-        const u = new URL(cleanUrl);
-        cleanUrl = u.pathname + u.search;
-      }
-    } catch (e) { /* keep original */ }
-
-    // Get source ID (must be numeric for int64)
-    let sourceId = '0';
+    // Resolve source — Kotatsu uses names like "WEBTOON", "MANGADEX"
     const sourceName = m.source || '';
+    let sourceId = '0';
     if (window.findMihonSourceId) {
       sourceId = window.findMihonSourceId(sourceName);
     }
     
-    // Convert source to proper Long value for protobuf
-    // protobuf.js accepts strings for int64, but they must be valid numbers
-    const sourceAsLong = protobuf.util.Long 
-      ? protobuf.util.Long.fromString(sourceId || '0', true)
-      : parseInt(sourceId) || 0;
+    // Track source for backupSources
+    if (!sourceTracker.has(sourceId)) {
+      sourceTracker.set(sourceId, sourceName);
+    }
+
+    // Map category
+    const mangaCategories = [];
+    const catId = rawManga.category_id;
+    if (catId !== undefined && catId !== 0 && kotatsuIdToMihonOrder[catId] !== undefined) {
+      mangaCategories.push(toLong(kotatsuIdToMihonOrder[catId]));
+    }
+
+    // Build chapter list from history (basic reconstruction)
+    const mangaHistory = historyByMangaId[mangaId] || [];
+
+    // Extract tags/genres
+    let genres = [];
+    if (Array.isArray(m.genre)) {
+      genres = m.genre.map(String);
+    } else if (Array.isArray(m.tags)) {
+      genres = m.tags.map(t => t.title || t.name || String(t));
+    }
+
+    // Keep original URL (don't strip domain)
+    const mangaUrl = String(m.url || m.public_url || '');
 
     return {
-      source: sourceAsLong,
-      url: cleanUrl,
+      source: toLong(sourceId),
+      url: mangaUrl,
       title: String(m.title || m.name || 'Unknown'),
-      artist: String(m.artist || m.author || ''),
+      artist: String(m.artist || ''),
       author: String(m.author || ''),
       description: String(m.description || ''),
-      genre: Array.isArray(m.genre) ? m.genre.map(String) : 
-             Array.isArray(m.tags) ? m.tags.map(t => t.title || t.name || String(t)) : [],
+      genre: genres,
       status: window.mapKotatsuStatusToMihon ? window.mapKotatsuStatusToMihon(m.state || m.status) : 0,
-      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || ''),
-      dateAdded: protobuf.util.Long 
-        ? protobuf.util.Long.fromNumber(Number(rawManga.created_at || m.dateAdded || Date.now()), true)
-        : Number(rawManga.created_at || m.dateAdded || Date.now()),
-      favorite: true, // CRITICAL: Must be true for library import
-      categories: mangaCategories.map(c => protobuf.util.Long ? protobuf.util.Long.fromNumber(c, true) : c),
-      chapters: [], // Kotatsu doesn't export chapter lists
+      thumbnailUrl: String(m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || m.thumbnailUrl || ''),
+      dateAdded: toLong(rawManga.created_at || m.dateAdded || Date.now()),
+      viewer: 0,
+      favorite: true,
+      chapterFlags: 0,
+      viewer_flags: 0,
+      categories: mangaCategories,
+      chapters: [],
+      tracking: [],
       history: mangaHistory,
+      updateStrategy: 0,
+      lastModifiedAt: toLong(0),
+      favoriteModifiedAt: toLong(0),
+      excludedScanlators: [],
+      version: toLong(0),
+      notes: '',
+      initialized: false,
     };
   });
 
-  // Build sources list
-  const sourceIds = new Set();
-  backupManga.forEach(m => {
-    const srcId = m.source.toString ? m.source.toString() : String(m.source);
-    sourceIds.add(srcId);
-  });
-  const backupSources = Array.from(sourceIds).map(id => ({
-    sourceId: protobuf.util.Long ? protobuf.util.Long.fromString(id, true) : parseInt(id) || 0,
-    name: window.findKotatsuSourceName ? window.findKotatsuSourceName(id) : 'Unknown',
-  }));
+  // --- Build sources list ---
+  const backupSources = [];
+  for (const [srcId, srcName] of sourceTracker) {
+    // Try to get a clean display name
+    let displayName = srcName;
+    if (displayName === 'UNKNOWN' || displayName === 'Unknown' || !displayName) {
+      // Try reverse lookup
+      if (window.findKotatsuSourceName) {
+        const resolved = window.findKotatsuSourceName(srcId);
+        if (resolved !== 'Unknown') displayName = resolved;
+      }
+    }
+    // Clean up Kotatsu-style names for Mihon display
+    // e.g., "MANGA_DEX" -> "MangaDex"
+    if (displayName === displayName.toUpperCase() && displayName.includes('_')) {
+      displayName = displayName.split('_').map(w => 
+        w.charAt(0) + w.slice(1).toLowerCase()
+      ).join(' ');
+    }
+
+    backupSources.push({
+      sourceId: toLong(srcId),
+      name: String(displayName || 'Unknown'),
+    });
+  }
 
   const payload = {
     backupManga,
@@ -304,31 +289,19 @@ async function createMihonBackup(data) {
     backupSources,
   };
 
-  // DEBUG: Store payload for inspection
-  window.lastMihonPayload = payload;
-  console.log('[mihon] Payload preview:', {
-    mangaCount: backupManga.length,
-    categoryCount: backupCategories.length,
-    firstManga: backupManga[0],
-  });
-
-  // Verify (non-blocking)
+  // Verify
   const errMsg = BackupMessage.verify(payload);
   if (errMsg) {
-    console.warn('[mihon] Proto verification warning:', errMsg);
-    window.lastMihonVerifyError = errMsg;
+    console.warn('[mihon-build] Proto verification warning:', errMsg);
   }
 
-  // Encode and compress
+  // Encode and gzip
   const message = BackupMessage.create(payload);
   const buffer = BackupMessage.encode(message).finish();
-  console.log('[mihon] Encoded buffer size:', buffer.length);
   const gzipped = pako.gzip(buffer);
 
   return new Blob([gzipped], { type: 'application/octet-stream' });
 }
-
-
 
 // Export
 if (typeof window !== 'undefined') {
