@@ -208,16 +208,51 @@ async function createMihonBackup(data) {
   const sourceTracker = new Map();
   const findId = window.findMihonSourceId;
   const mapStatus = window.mapKotatsuStatusToMihon;
-  const emptyArr = []; // Shared frozen empty array ref
+  const emptyArr = [];
 
   for (let i = 0; i < mangaLen; i++) {
     const rawManga = mangaList[i];
     const m = rawManga.manga || rawManga;
     const mangaId = m.id || rawManga.manga_id || rawManga.id || (i + 1);
 
-    // Source
+    // Source name
     const sourceName = m.source || '';
-    const sourceId = findId ? findId(sourceName) : '0';
+    
+    // Standardize URL structure for Mihon extensions
+    let mihonUrl = m.url || '';
+    if (sourceName === 'LOCAL') {
+      mihonUrl = window.getKotatsuSlug ? window.getKotatsuSlug('LOCAL', mihonUrl) : mihonUrl;
+      const localIdx = mihonUrl.indexOf('/local/');
+      if (localIdx !== -1) {
+        mihonUrl = mihonUrl.substring(localIdx + 7);
+      } else {
+        const segments = mihonUrl.split('/');
+        mihonUrl = segments[segments.length - 1] || mihonUrl;
+      }
+    } else if (sourceName === 'COMIX') {
+      const slug = window.getKotatsuSlug ? window.getKotatsuSlug('COMIX', mihonUrl) : mihonUrl;
+      mihonUrl = '/' + slug;
+    } else if (sourceName === 'MANGADEX') {
+      const slug = window.getKotatsuSlug ? window.getKotatsuSlug('MANGADEX', mihonUrl) : mihonUrl;
+      mihonUrl = '/manga/' + slug;
+    } else {
+      // Standardize as relative path starting with slash
+      if (mihonUrl.startsWith('http')) {
+        try {
+          const u = new URL(mihonUrl);
+          mihonUrl = u.pathname + u.search;
+        } catch (e) {}
+      }
+      if (mihonUrl && !mihonUrl.startsWith('/')) {
+        mihonUrl = '/' + mihonUrl;
+      }
+    }
+
+    // Resolve source ID
+    let sourceId = '0';
+    if (sourceName !== 'LOCAL') {
+      sourceId = findId ? findId(sourceName) : '0';
+    }
     if (!sourceTracker.has(sourceId)) sourceTracker.set(sourceId, sourceName);
 
     // Category
@@ -242,12 +277,12 @@ async function createMihonBackup(data) {
       genres = emptyArr;
     }
 
-    // Thumbnail — try multiple field names without chaining
+    // Thumbnail
     const thumb = m.cover_url || m.coverUrl || m.large_cover_url || m.thumbnail_url || m.thumbnailUrl || '';
 
     backupManga[i] = {
       source: toLong(sourceId),
-      url: String(m.url || m.public_url || ''),
+      url: String(mihonUrl),
       title: String(m.title || m.name || 'Unknown'),
       artist: String(m.artist || ''),
       author: String(m.author || ''),
@@ -280,14 +315,16 @@ async function createMihonBackup(data) {
   const findName = window.findKotatsuSourceName;
   for (const [srcId, srcName] of sourceTracker) {
     let displayName = srcName;
-    if (!displayName || displayName === 'UNKNOWN' || displayName === 'Unknown') {
+    if (srcId === '0') {
+      displayName = 'Local';
+    } else if (!displayName || displayName === 'UNKNOWN' || displayName === 'Unknown') {
       if (findName) {
         const resolved = findName(srcId);
         if (resolved !== 'Unknown') displayName = resolved;
       }
     }
     // Clean UPPER_CASE names
-    if (displayName === displayName.toUpperCase() && displayName.indexOf('_') !== -1) {
+    if (displayName && displayName === displayName.toUpperCase() && displayName.indexOf('_') !== -1) {
       const parts = displayName.split('_');
       for (let p = 0; p < parts.length; p++) {
         parts[p] = parts[p].charAt(0) + parts[p].slice(1).toLowerCase();
@@ -297,11 +334,22 @@ async function createMihonBackup(data) {
     backupSources[si++] = { sourceId: toLong(srcId), name: String(displayName || 'Unknown') };
   }
 
-  // --- Encode + gzip ---
-  // Skip verify() in production — it's O(N) and we control the schema
-  const message = BackupMessage.create({ backupManga, backupCategories, backupSources });
+  // Create the protobuf message
+  const message = BackupMessage.create({
+    backupManga,
+    backupCategories,
+    backupSources,
+    // Add Keiyoushi repo definition for convenience
+    backupExtensionRepo: [{
+      baseUrl: 'https://raw.githubusercontent.com/keiyoushi/extensions/repo',
+      name: 'Keiyoushi',
+      shortName: 'keiyoushi',
+      website: 'https://keiyoushi.github.io',
+      signingKeyFingerprint: '9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2'
+    }]
+  });
   const buffer = BackupMessage.encode(message).finish();
-  const gzipped = pako.gzip(buffer, { level: 1 }); // Fast compression
+  const gzipped = pako.gzip(buffer, { level: 1 });
 
   return new Blob([gzipped], { type: 'application/octet-stream' });
 }

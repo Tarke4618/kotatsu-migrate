@@ -3,15 +3,25 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   // ===== DOM Elements =====
-  const zoneKotatsu = document.getElementById('zone-kotatsu');
-  const inputKotatsu = document.getElementById('input-kotatsu');
+  const zone = document.getElementById('zone-kotatsu');
+  const input = document.getElementById('input-kotatsu');
   
-  const statusIcon = document.getElementById('status-icon');
+  const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
+  
   const statsPanel = document.getElementById('stats');
   const statManga = document.getElementById('stat-manga');
   const statCategories = document.getElementById('stat-categories');
   const statHistory = document.getElementById('stat-history');
+  
+  const sourcesContainer = document.getElementById('sources-container');
+  const sourcesList = document.getElementById('sources-list');
+  
+  const verificationReport = document.getElementById('verification-report');
+  const vInput = document.getElementById('v-input');
+  const vOutput = document.getElementById('v-output');
+  const vBadge = document.getElementById('integrity-badge');
+  const vMsg = document.getElementById('verification-msg');
   
   const actionsPanel = document.getElementById('actions');
   const btnDownload = document.getElementById('btn-download');
@@ -26,19 +36,45 @@ document.addEventListener('DOMContentLoaded', () => {
   let convertedBlob = null;
   let debugData = {};
 
-
-
-  // ===== Status Updates =====
-  function setStatus(icon, text, type = 'default') {
-    statusIcon.textContent = icon;
-    statusText.textContent = text;
-    
-    // Color coding
-    statusText.style.color = type === 'success' ? 'var(--accent-success)' : 
-                             type === 'error' ? 'var(--accent-error)' : 
-                             'inherit';
+  // ===== Visual Progress Step Tracker =====
+  function setStep(activeStep, success = true) {
+    for (let i = 1; i <= 4; i++) {
+      const step = document.getElementById(`step-${i}`);
+      const line = document.getElementById(`line-${i - 1}`); // line-1 is before step 2
+      
+      if (!step) continue;
+      
+      step.classList.remove('active', 'completed');
+      if (line) line.classList.remove('active');
+      
+      if (i < activeStep) {
+        step.classList.add('completed');
+        if (line) line.classList.add('active');
+      } else if (i === activeStep) {
+        step.classList.add('active');
+      }
+    }
   }
 
+  // ===== Status Message Updates =====
+  function setStatus(text, type = 'default') {
+    statusText.textContent = text.toUpperCase();
+    
+    // Reset dot classes
+    statusDot.className = 'status-dot';
+    
+    if (type === 'success') {
+      statusDot.classList.add('success');
+    } else if (type === 'error') {
+      statusDot.classList.add('error');
+    } else if (type === 'loading') {
+      statusDot.classList.add('pulsing', 'success');
+    } else {
+      statusDot.classList.add('pulsing');
+    }
+  }
+
+  // ===== Stats Grid Rendering =====
   function showStats(manga, categories, history) {
     statManga.textContent = manga;
     statCategories.textContent = categories;
@@ -50,33 +86,84 @@ document.addEventListener('DOMContentLoaded', () => {
     statsPanel.style.display = 'none';
   }
 
-  function showActions() {
-    actionsPanel.style.display = 'flex';
+  // ===== Sources List Breakdown =====
+  function renderSourcesList(mangaList, isMihonInput) {
+    sourcesList.innerHTML = '';
+    
+    if (!mangaList || mangaList.length === 0) {
+      sourcesContainer.style.display = 'none';
+      return;
+    }
+    
+    const sourceCounts = {};
+    
+    for (let i = 0; i < mangaList.length; i++) {
+      const item = mangaList[i];
+      const m = item.manga || item;
+      
+      let sourceName = 'Unknown';
+      if (isMihonInput) {
+        // Mihon input stores source ID as integer/string
+        const srcId = String(item.source || '0');
+        if (srcId === '0') {
+          sourceName = 'Local';
+        } else {
+          sourceName = window.findKotatsuSourceName ? window.findKotatsuSourceName(srcId) : 'Unknown';
+        }
+      } else {
+        // Kotatsu input stores source name directly as string
+        sourceName = m.source || 'Unknown';
+      }
+      
+      // Capitalize source name nicely
+      if (sourceName === sourceName.toUpperCase() && sourceName.includes('_')) {
+        sourceName = sourceName.split('_')
+          .map(w => w.charAt(0) + w.slice(1).toLowerCase())
+          .join(' ');
+      }
+      
+      sourceCounts[sourceName] = (sourceCounts[sourceName] || 0) + 1;
+    }
+    
+    // Sort sources by count descending
+    const sortedSources = Object.entries(sourceCounts)
+      .sort((a, b) => b[1] - a[1]);
+      
+    for (const [name, count] of sortedSources) {
+      const badge = document.createElement('div');
+      badge.className = 'source-badge';
+      badge.innerHTML = `${name} <span class="source-count">${count}</span>`;
+      sourcesList.appendChild(badge);
+    }
+    
+    sourcesContainer.style.display = 'block';
   }
 
-  function hideActions() {
-    actionsPanel.style.display = 'none';
+  function hideSourcesList() {
+    sourcesContainer.style.display = 'none';
+    sourcesList.innerHTML = '';
   }
 
-  // ===== Drop Zone Handler =====
-  function setupDropZone(zone, input) {
-    // Click to browse
+  // ===== File Input & Drop Handling =====
+  function setupDropZone() {
+    // Click drop zone to browse files
     zone.addEventListener('click', () => input.click());
 
-    // Drag effects
+    // Drag events
     zone.addEventListener('dragover', (e) => {
       e.preventDefault();
-      zone.classList.add('active');
+      // Add general drag hover glow
+      zone.classList.add('hover-kotatsu');
     });
 
     zone.addEventListener('dragleave', () => {
-      zone.classList.remove('active');
+      zone.classList.remove('hover-kotatsu', 'hover-mihon');
     });
 
     // Drop handler
     zone.addEventListener('drop', async (e) => {
       e.preventDefault();
-      zone.classList.remove('active');
+      zone.classList.remove('hover-kotatsu', 'hover-mihon');
       
       const file = e.dataTransfer.files[0];
       if (file) {
@@ -93,125 +180,162 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  setupDropZone(zoneKotatsu, inputKotatsu);
+  setupDropZone();
 
-  // ===== File Processing =====
+  // ===== Main Processing flow =====
   async function handleFile(file) {
+    // Reset state and views
     hideStats();
-    hideActions();
-    debugData = {};
+    hideSourcesList();
+    verificationReport.style.display = 'none';
+    actionsPanel.style.display = 'none';
+    btnDownload.style.display = ''; // Reset display style in case of previous errors
+
+    
+    debugData = {
+      fileName: file.name,
+      fileSize: file.size,
+      parsedAt: new Date().toISOString()
+    };
     parsedData = null;
     convertedBlob = null;
-
+    
+    // Highlight drop-zone color persistently depending on file format
+    zone.classList.remove('hover-kotatsu', 'hover-mihon');
     const isMihon = file.name.endsWith('.tachibk') || file.name.endsWith('.proto.gz');
-    const targetFormat = isMihon ? 'Kotatsu' : 'Mihon';
+    zone.classList.add(isMihon ? 'hover-mihon' : 'hover-kotatsu');
+
+    // 1. Start Upload
+    setStep(1);
+    setStatus('Reading file buffer...', 'loading');
     
-    setStatus('⏳', `Parsing ${isMihon ? 'Mihon' : 'Kotatsu'} backup...`);
-    
+    // Tiny delay to allow DOM render before heavy processing
+    await new Promise(r => setTimeout(r, 100));
+
     try {
+      // 2. Parse file contents
+      setStep(2);
+      setStatus('Extracting backup data...', 'loading');
+      await new Promise(r => setTimeout(r, 100));
+
       let parseResult;
-      
       if (isMihon) {
         parseResult = await window.parseMihonBackup(file);
       } else {
         parseResult = await window.parseKotatsuBackup(file);
       }
       
-      debugData.parseResult = parseResult;
+      debugData.parseResult = {
+        success: parseResult.success,
+        mangaCount: parseResult.data?.manga?.length || 0,
+        categoriesCount: parseResult.data?.categories?.length || 0,
+        historyCount: parseResult.data?.history?.length || 0,
+        errors: parseResult.debug?.errors || []
+      };
 
       if (!parseResult.success) {
-        throw new Error(parseResult.debug.errors.join('; ') || 'Parse failed');
+        throw new Error(parseResult.debug?.errors?.join('; ') || 'Database parse failed. Is the file corrupt?');
       }
 
       parsedData = parseResult.data;
-
-      // Count stats
       const mangaCount = parsedData.manga?.length || 0;
       const categoryCount = parsedData.categories?.length || 0;
       const historyCount = parsedData.history?.length || 0;
 
-      setStatus('✅', `Parsed ${mangaCount} manga`, 'success');
       showStats(mangaCount, categoryCount, historyCount);
+      renderSourcesList(parsedData.manga, isMihon);
 
-      // Convert
-      setStatus('⏳', `Converting to ${targetFormat} format...`);
-      
+      // 3. Convert contents
+      setStep(3);
+      setStatus('Translating schemas & hashing UIDs...', 'loading');
+      await new Promise(r => setTimeout(r, 100));
+
       if (isMihon) {
-        // Convert TO Kotatsu
+        // Convert Mihon TO Kotatsu
         convertedBlob = await window.createKotatsuBackup(parsedData);
-        debugData.outputExtension = 'bk.zip';
+        debugData.outputFormat = 'Kotatsu (.bk.zip)';
       } else {
-        // Convert TO Mihon
+        // Convert Kotatsu TO Mihon
         convertedBlob = await window.createMihonBackup(parsedData);
-        debugData.outputExtension = 'tachibk';
+        debugData.outputFormat = 'Mihon (.tachibk)';
       }
       
       debugData.convertedSize = convertedBlob.size;
 
-      setStatus('✅', 'Conversion complete! Ready to download.', 'success');
-      showActions();
+      // 4. Verify contents
+      setStep(4);
+      setStatus('Auditing structural integrity...', 'loading');
+      await new Promise(r => setTimeout(r, 150));
 
-      // ===== VERIFICATION START =====
-      try {
-        const vInput = document.getElementById('v-input');
-        const vOutput = document.getElementById('v-output');
-        const vBadge = document.getElementById('integrity-badge');
-        const vMsg = document.getElementById('verification-msg');
-        const vReport = document.getElementById('verification-report');
-
-        // Input count
-        const inputCount = mangaCount;
-        vInput.textContent = inputCount;
-
-        // Verify Output by parsing the blob we just created
-        let verifyResult;
-        const fakeFile = new File([convertedBlob], "verification_temp" + (isMihon ? ".bk.zip" : ".tachibk"));
-        
-        if (isMihon) {
-            // We created Kotatsu
-            verifyResult = await window.parseKotatsuBackup(fakeFile);
-        } else {
-            // We created Mihon
-            verifyResult = await window.parseMihonBackup(fakeFile);
-        }
-
-        if (verifyResult.success) {
-            const outputCount = verifyResult.data.manga.length;
-            vOutput.textContent = outputCount;
-            vReport.style.display = 'block';
-
-            if (inputCount === outputCount) {
-                vBadge.textContent = "VERIFIED";
-                vBadge.className = "verification-badge";
-                vMsg.textContent = "100% Data Integrity. All items preserved.";
-                vMsg.style.color = "var(--accent-success)";
-            } else {
-                const diff = inputCount - outputCount;
-                vBadge.textContent = "WARNING";
-                vBadge.className = "verification-badge warning";
-                vMsg.textContent = `Warning: ${Math.abs(diff)} items difference detected.`;
-                vMsg.style.color = "var(--accent-error)";
-            }
-        }
-      } catch (vErr) {
-        console.warn("Verification failed:", vErr);
+      let verifyResult;
+      const fakeFile = new File([convertedBlob], "temp_verification" + (isMihon ? ".bk.zip" : ".tachibk"));
+      
+      if (isMihon) {
+        verifyResult = await window.parseKotatsuBackup(fakeFile);
+      } else {
+        verifyResult = await window.parseMihonBackup(fakeFile);
       }
-      // ===== VERIFICATION END =====
+
+      debugData.verificationResult = {
+        success: verifyResult.success,
+        mangaCount: verifyResult.data?.manga?.length || 0,
+        errors: verifyResult.debug?.errors || []
+      };
+
+      if (verifyResult.success) {
+        const inputManga = mangaCount;
+        const outputManga = verifyResult.data.manga.length;
+        
+        vInput.textContent = inputManga;
+        vOutput.textContent = outputManga;
+        verificationReport.style.display = 'block';
+
+        if (inputManga === outputManga) {
+          vBadge.textContent = "VERIFIED";
+          vBadge.className = "verification-badge";
+          vMsg.textContent = "100% Data Integrity. All library records successfully reconstructed.";
+          vMsg.style.color = "var(--color-mihon)";
+        } else {
+          const diff = inputManga - outputManga;
+          vBadge.textContent = "WARNING";
+          vBadge.className = "verification-badge warning";
+          vMsg.textContent = `Audit Warning: ${Math.abs(diff)} mismatch in parsed records.`;
+          vMsg.style.color = "var(--accent-warning)";
+        }
+      } else {
+        throw new Error(verifyResult.debug?.errors?.join('; ') || 'Post-conversion validation failed.');
+      }
+
+      // Completed all steps!
+      setStep(5); // Highlight all 4 steps as completed
+      setStatus('Migration Successful! Ready for download.', 'success');
+      actionsPanel.style.display = 'flex';
 
     } catch (err) {
-      console.error('Conversion error:', err);
+      console.error('Migration error:', err);
       debugData.error = err.message;
       debugData.stack = err.stack;
-      setStatus('❌', `Error: ${err.message}`, 'error');
+      
+      setStatus(err.message.includes('parse') ? 'Extraction failed' : 'Conversion failed', 'error');
+      
+      // Reset step highlights to indicate failure
+      for (let i = 1; i <= 4; i++) {
+        const step = document.getElementById(`step-${i}`);
+        if (step) step.classList.remove('active', 'completed');
+      }
+      
+      actionsPanel.style.display = 'flex';
+      btnDownload.style.display = 'none'; // Only debug is allowed on error
     }
   }
 
-  // ===== Download Handler =====
+  // ===== Download Trigger =====
   btnDownload.addEventListener('click', () => {
     if (!convertedBlob) return;
 
-    const ext = debugData.outputExtension || 'backup';
-    const prefix = ext === 'tachibk' ? 'kotatsu_to_mihon' : 'mihon_to_kotatsu';
+    const isMihonOutput = debugData.outputFormat && debugData.outputFormat.includes('Mihon');
+    const ext = isMihonOutput ? 'tachibk' : 'bk.zip';
+    const prefix = isMihonOutput ? 'kotatsu_to_mihon' : 'mihon_to_kotatsu';
     const filename = `${prefix}_${Date.now()}.${ext}`;
     
     const url = URL.createObjectURL(convertedBlob);
@@ -224,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url);
   });
 
-  // ===== Debug Modal =====
+  // ===== Debug Modal Controls =====
   btnDebug.addEventListener('click', () => {
     debugContent.textContent = JSON.stringify(debugData, null, 2);
     modalDebug.style.display = 'flex';
